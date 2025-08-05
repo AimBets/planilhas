@@ -11,7 +11,6 @@ from telegram.ext import (
     filters,
     ContextTypes
 )
-
 from utils import parse_mensagem, calcular_saldo, classificar_intervalo
 
 BOT_TOKEN = "8399571746:AAFXxkkJOfOP8cWozYKUnitQTDPTmLpWky8"
@@ -25,7 +24,6 @@ if not os.path.exists(ARQUIVO_DADOS):
     df = pd.DataFrame(columns=["data", "hora", "esporte", "confronto", "estrategia", "linha", "odd", "resultado", "saldo", "intervalo"])
     df.to_csv(ARQUIVO_DADOS, index=False)
 
-# ✅ Recebe mensagens de apostas normalmente
 async def mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_message.chat.id != CHAT_ID_DESTINO:
         return
@@ -35,7 +33,7 @@ async def mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     dados = parse_mensagem(texto)
     if dados:
-        saldo = calcular_saldo(dados['linha'], dados['resultado'])
+        saldo = calcular_saldo(dados['odd'], dados['resultado'])
         intervalo = classificar_intervalo(datahora.time())
 
         nova_linha = {
@@ -45,7 +43,7 @@ async def mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "confronto": dados['confronto'],
             "estrategia": dados['estrategia'],
             "linha": dados['linha'],
-            "odd": dados['linha'],
+            "odd": dados['odd'],
             "resultado": dados['resultado'],
             "saldo": saldo,
             "intervalo": intervalo
@@ -55,14 +53,12 @@ async def mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         df = pd.concat([df, pd.DataFrame([nova_linha])])
         df.to_csv(ARQUIVO_DADOS, index=False)
 
-# ✅ Inicia o comando /gerarplanilha
 async def gerarplanilha_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_message.chat.id != CHAT_ID_DESTINO:
         return
     await update.message.reply_text("🗓️ Informe a data desejada (ex: 04/08/2025):")
     return PEDIR_DATA
 
-# ✅ Gera a planilha da data fornecida
 async def receber_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data_texto = update.message.text.strip()
     try:
@@ -88,23 +84,13 @@ async def receber_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ocorreu um erro ao gerar a planilha.")
     return ConversationHandler.END
 
-# ✅ Inicializa o bot com polling
 if __name__ == '__main__':
-    from telegram.ext import Application
-
-    app = Application.builder().token(BOT_TOKEN).build()
-
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), mensagem))
-
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("gerarplanilha", gerarplanilha_cmd)],
         states={PEDIR_DATA: [MessageHandler(filters.TEXT & (~filters.COMMAND), receber_data)]},
         fallbacks=[]
     )
-
     app.add_handler(conv_handler)
-
-    try:
-        app.run_polling()
-    except (KeyboardInterrupt, SystemExit):
-        print("Bot encerrado.")
+    app.run_polling()
