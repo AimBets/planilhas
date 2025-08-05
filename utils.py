@@ -2,13 +2,12 @@ import re
 
 def parse_mensagem(texto):
     try:
-        esporte = "⚽️" if "Fifa" in texto else "🏀"
-        estrategia_linha = re.search(r"🏆 (.*?) @(\d+(?:\.\d+)?)", texto)
-        estrategia = estrategia_linha.group(1).rsplit(" ", 1)[0]
-        linha = estrategia_linha.group(1).rsplit(" ", 1)[1]
-        odd = estrategia_linha.group(2)
-        confronto = re.search(r"⚔ Confronto: (.*?)\\n", texto).group(1)
-        resultado = re.search(r"(✅ Green|❌ Red|🟩 Half_green|🟥 Half_red|⚠️ Anulada|⚪ Void)", texto).group(1)
+        esporte = "Fifa" if "Fifa" in texto else "Outro"
+        estrategia = re.search(r"🏆 (.*?) @", texto).group(1)
+        linha = re.search(r"@(\d+\.\d+)", texto).group(1)
+        odd = linha
+        confronto = re.search(r"Confronto: (.*?)\n", texto).group(1)
+        resultado = "Green" if "✅ Green" in texto else "Red" if "❌ Red" in texto else "Anulada"
         return {
             "esporte": esporte,
             "estrategia": estrategia,
@@ -20,35 +19,22 @@ def parse_mensagem(texto):
     except:
         return None
 
-def calcular_saldo(odd_str, resultado):
+def calcular_saldo(odd, resultado):
     try:
-        odd = float(odd_str)
-        if resultado == "✅ Green":
+        odd = float(odd)
+        if resultado.lower() == "green":
             return round(odd - 1, 2)
-        elif resultado == "🟩 Half_green":
-            return round((odd - 1) / 2, 2)
-        elif resultado == "❌ Red":
-            return -1
-        elif resultado == "🟥 Half_red":
-            return -0.5
-        elif resultado in ["⚠️ Anulada", "⚪ Void"]:
-            return 0
+        elif resultado.lower() == "red":
+            return -1.00
         else:
-            return 0
+            return 0.00
     except:
-        return 0
+        return 0.00
 
-def classificar_intervalo(horario):
-    h = horario.hour
-    if 0 <= h < 4:
-        return "00:00 às 03:59"
-    elif 4 <= h < 8:
-        return "04:00 às 07:59"
-    elif 8 <= h < 12:
-        return "08:00 às 11:59"
-    elif 12 <= h < 16:
-        return "12:00 às 15:59"
-    elif 16 <= h < 20:
-        return "16:00 às 19:59"
+def classificar_intervalo(hora):
+    if hora < hora.replace(hour=12):
+        return "Manhã"
+    elif hora < hora.replace(hour=18):
+        return "Tarde"
     else:
-        return "20:00 às 23:59"
+        return "Noite"
