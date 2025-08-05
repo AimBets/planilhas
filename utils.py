@@ -1,33 +1,28 @@
 import re
-from datetime import time
 
 def parse_mensagem(texto):
     try:
-        esporte = "⚽️" if "⚽️" in texto else "🏀"
-        estrategia_match = re.search(r'🏆 (.+?) @', texto)
-        linha_match = re.search(r'@([\d.]+)', texto)
-        confronto_match = re.search(r'⚔ Confronto: (.+)', texto)
-        resultado_match = re.search(r'(✅ Green|🟩 Half_green|❌ Red|🟥 Half_red|⚪ Void|⚠️ Anulada)', texto)
-
-        estrategia = estrategia_match.group(1).strip() if estrategia_match else ""
-        linha = linha_match.group(1) if linha_match else ""
-        confronto = confronto_match.group(1).strip() if confronto_match else ""
-        resultado = resultado_match.group(1).strip() if resultado_match else ""
-
+        esporte = "⚽️" if "Fifa" in texto else "🏀"
+        estrategia_linha = re.search(r"🏆 (.*?) @(\d+(?:\.\d+)?)", texto)
+        estrategia = estrategia_linha.group(1).rsplit(" ", 1)[0]
+        linha = estrategia_linha.group(1).rsplit(" ", 1)[1]
+        odd = estrategia_linha.group(2)
+        confronto = re.search(r"⚔ Confronto: (.*?)\\n", texto).group(1)
+        resultado = re.search(r"(✅ Green|❌ Red|🟩 Half_green|🟥 Half_red|⚠️ Anulada|⚪ Void)", texto).group(1)
         return {
             "esporte": esporte,
             "estrategia": estrategia,
             "linha": linha,
+            "odd": odd,
             "confronto": confronto,
             "resultado": resultado
         }
-    except Exception as e:
-        print("Erro ao fazer parsing:", e)
+    except:
         return None
 
-def calcular_saldo(odd, resultado):
+def calcular_saldo(odd_str, resultado):
     try:
-        odd = float(odd)
+        odd = float(odd_str)
         if resultado == "✅ Green":
             return round(odd - 1, 2)
         elif resultado == "🟩 Half_green":
@@ -36,15 +31,24 @@ def calcular_saldo(odd, resultado):
             return -1
         elif resultado == "🟥 Half_red":
             return -0.5
-        elif resultado in ["⚪ Void", "⚠️ Anulada"]:
+        elif resultado in ["⚠️ Anulada", "⚪ Void"]:
             return 0
-        return ""
+        else:
+            return 0
     except:
-        return ""
+        return 0
 
-def classificar_intervalo(hora):
-    hora_int = hora.hour
-    base = (hora_int // 4) * 4
-    inicio = time(base).strftime("%H:%M")
-    fim = time(base + 3, 59).strftime("%H:%M")
-    return f"{inicio} às {fim}"
+def classificar_intervalo(horario):
+    h = horario.hour
+    if 0 <= h < 4:
+        return "00:00 às 03:59"
+    elif 4 <= h < 8:
+        return "04:00 às 07:59"
+    elif 8 <= h < 12:
+        return "08:00 às 11:59"
+    elif 12 <= h < 16:
+        return "12:00 às 15:59"
+    elif 16 <= h < 20:
+        return "16:00 às 19:59"
+    else:
+        return "20:00 às 23:59"
