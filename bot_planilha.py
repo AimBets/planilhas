@@ -1,113 +1,104 @@
+import logging
 import os
-import re
-import datetime
-from collections import defaultdict
-from telegram import Update, InputFile
+import pandas as pd
+from datetime import datetime
+from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder,
-    ContextTypes,
-    CommandHandler,
-    MessageHandler,
-    ConversationHandler,
-    filters,
+    ApplicationBuilder, MessageHandler, CommandHandler,
+    ContextTypes, ConversationHandler, filters
 )
-from openpyxl import Workbook
+from utils import parse_mensagem, calcular_saldo, classificar_intervalo
 
-# TOKEN do seu bot
-TOKEN = "8399571746:AAFXxkkJOfOP8cWozYKUnitQTDPTmLpWky8"
+BOT_TOKEN = "8399571746:AAFXxkkJOfOP8cWozYKUnitQTDPTmLpWky8"
+CHAT_ID_ADMIN = 1454008370
+ARQUIVO_DADOS = "dados_apostas.csv"
 
-# Armazena apostas por data
-apostas_por_data = defaultdict(list)
+logging.basicConfig(level=logging.INFO)
 
-# Regex para extrair os dados da mensagem
-padrao = re.compile(
-    r"⚽️ (.+)\n🏆 (.+?) @([\d.]+)\n⚔ Confronto: (.+?)\n🔢 Placar: (.+?)\n🕒 Tempo: (.+?)\n\n(✅ Green|❌ Red|⚠️ Anulada)",
-    re.DOTALL
-)
+# Criar CSV se não existir
+if not os.path.exists(ARQUIVO_DADOS):
+    df = pd.DataFrame(columns=[
+        "data", "hora", "esporte", "confronto", "estrategia",
+        "linha", "odd", "resultado", "saldo", "intervalo"
+    ])
+    df.to_csv(ARQUIVO_DADOS, index=False)
 
-# START
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bem-vindo! Use /gerarplanilha para gerar o relatório de apostas.")
+# Armazenar apostas recebidas no canal
+async def salvar_aposta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.effective_message
+    texto = message.text
+    datahora = message.date.astimezone()
 
-# /GERARPLANILHA
-async def gerarplanilha(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📅 Informe a data desejada (ex: 04/08/2025):")
-    return 1
+    dados = parse_mensagem(texto)
+    if dados:
+        saldo = calcular_saldo(dados['linha'], dados['resultado'])
+        intervalo = classificar_intervalo(datahora.time())
 
-# Receber data
-async def receber_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data_texto = update.message.text.strip()
+        nova_linha = {
+            "data": datahora.strftime("%d/%m/%Y"),
+            "hora": datahora.strftime("%H:%M"),
+            "esporte": dados['esporte'],
+            "confronto": dados['confronto'],
+            "estrategia": dados['estrategia'],
+            "linha": dados['linha'],
+            "odd": dados['odd'],
+            "resultado": dados['resultado'],
+            "saldo": saldo,
+            "intervalo": intervalo
+        }
 
+        df = pd.read_csv(ARQUIVO_DADOS)
+        df = pd.concat([df, pd.DataFrame([nova_linha])])
+        df.to_csv(ARQUIVO_DADOS, index=False)
+        logging.info(f"Aposta salva: {nova_linha}")
+
+# Etapa da conversa: receber data
+ASKING_DATA = 1
+
+async def gerar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Digite a data que deseja gerar a planilha (formato: dd/mm/aaaa):")
+    return ASKING_DATA
+
+# Etapa da conversa: gerar planilha
+async def gerar_planilha(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    texto = update.message.text.strip()
     try:
-        data_obj = datetime.datetime.strptime(data_texto, "%d/%m/%Y").date()
+        data = datetime.strptime(texto, "%d/%m/%Y").strftime("%d/%m/%Y")
     except ValueError:
-        await update.message.reply_text("❌ Data inválida. Use o formato dd/mm/aaaa.")
-        return 1
-
-    apostas = apostas_por_data.get(data_obj)
-    if not apostas:
-        await update.message.reply_text("⚠️ Nenhuma aposta encontrada para essa data.")
+        await update.message.reply_text("Data inválida. Use o formato: dd/mm/aaaa")
         return ConversationHandler.END
 
-    # Criar planilha
-    wb = Workbook()
-    ws = wb.active
-    ws.title = data_obj.strftime("%d-%m-%Y")
-    ws.append(["ESPORTES", "MERCADO", "ODD", "CONFRONTO", "PLACAR", "TEMPO", "RESULTADO"])
+    df = pd.read_csv(ARQUIVO_DADOS)
+    df_filtrado = df[df['data'] == data]
 
-    for aposta in apostas:
-        ws.append(aposta)
+    if df_filtrado.empty:
+        await update.message.reply_text("Nenhuma aposta encontrada para essa data.")
+    else:
+        nome_arquivo = f"apostas_{data.replace('/', '-')}.xlsx"
+        df_filtrado.to_excel(nome_arquivo, index=False)
+        await update.message.reply_document(document=open(nome_arquivo, 'rb'))
+        os.remove(nome_arquivo)
 
-    nome_arquivo = f"apostas_{data_obj.strftime('%d_%m_%Y')}.xlsx"
-    wb.save(nome_arquivo)
-
-    with open(nome_arquivo, "rb") as f:
-        await update.message.reply_document(InputFile(f, filename=nome_arquivo))
-
-    os.remove(nome_arquivo)
     return ConversationHandler.END
 
-# Captura mensagens do canal
-async def capturar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    texto = update.effective_message.text
-    if not texto:
-        return
-
-    match = padrao.search(texto)
-    if match:
-        esporte, mercado, odd, confronto, placar, tempo, resultado = match.groups()
-        data_aposta = datetime.date.today()
-        apostas_por_data[data_aposta].append([
-            esporte.strip(),
-            mercado.strip(),
-            odd.strip(),
-            confronto.strip(),
-            placar.strip(),
-            tempo.strip(),
-            resultado.strip()
-        ])
-
-# Cancelar comando
+# Cancelamento da conversa
 async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Ação cancelada.")
+    await update.message.reply_text("Operação cancelada.")
     return ConversationHandler.END
 
-# MAIN
+# Início do bot
 def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Conversa da planilha
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("gerarplanilha", gerarplanilha)],
-        states={
-            1: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_data)],
-        },
-        fallbacks=[CommandHandler("cancelar", cancelar)],
+    # Handlers
+    app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.CHANNEL, salvar_aposta))
+
+    conversa_handler = ConversationHandler(
+        entry_points=[CommandHandler("gerarplanilha", gerar_command)],
+        states={ASKING_DATA: [MessageHandler(filters.TEXT & ~filters.COMMAND, gerar_planilha)]},
+        fallbacks=[CommandHandler("cancelar", cancelar)]
     )
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(conv_handler)
-    app.add_handler(MessageHandler(filters.TEXT & filters.ALL, capturar))
+    app.add_handler(conversa_handler)
 
     app.run_polling()
 
