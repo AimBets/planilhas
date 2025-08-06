@@ -127,6 +127,7 @@ if __name__ == '__main__':
     )
 
     app.add_handler(conv_handler)
-    app.add_handler(ChannelPostHandler(salvar_mensagem))
+    app.add_handler(MessageHandler(filters.ChatType.CHANNEL, salvar_mensagem))
 
     app.run_polling()
+
