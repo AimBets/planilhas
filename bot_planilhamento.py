@@ -1,7 +1,12 @@
-
 import json
 import os
 from datetime import datetime
+import re
+import asyncio
+
+import pandas as pd
+import pytz
+
 from telegram import Update, InputFile
 from telegram.ext import (
     ApplicationBuilder,
@@ -12,14 +17,12 @@ from telegram.ext import (
     ContextTypes,
 )
 from telegram.constants import ChatAction
-import pytz
-import pandas as pd
-import re
 
 BOT_TOKEN = "8399571746:AAFXxkkJOfOP8cWozYKUnitQTDPTmLpWky8"
 CANAL_ID = -1002780267394
 CHAT_ID_USUARIO = 1454008370
-DATA_SOLICITADA = range(1)
+DATA_SOLICITADA = 0  # Estado da conversa (um inteiro)
+
 ARQUIVO_DADOS = "dados_salvos.json"
 
 # Garantir pasta de planilhas
@@ -38,6 +41,7 @@ def extrair_intervalo(hora: str):
     for inicio, fim in blocos:
         if inicio <= h <= fim:
             return f"{str(inicio).zfill(2)}:00 às {str(fim).zfill(2)}:59"
+    return "00:00 às 03:59"  # fallback caso não entre no intervalo
 
 def extrair_dados(mensagem: str):
     try:
@@ -47,7 +51,8 @@ def extrair_dados(mensagem: str):
         esporte = "🏀" if any(q in mensagem for q in ["(Q1)", "(Q2)", "(Q3)", "(Q4)"]) else "⚽️"
         confronto_match = re.search(r"🏆 .*? - (.*?) - 🔢", mensagem)
         confronto = confronto_match.group(1).strip() if confronto_match else "?"
-        mercado = re.search(r"🎲 Mercado: (.*?)\n", mensagem).group(1).strip()
+        mercado = re.search(r"🎲 Mercado: (.*?)\n", mensagem)
+        mercado = mercado.group(1).strip() if mercado else "?"
         linha_match = re.search(r"🏆 (.*?)@", mensagem)
         linha = linha_match.group(1).strip() if linha_match else mercado
         odd_match = re.search(r"@([0-9.]+)", mensagem)
@@ -130,9 +135,6 @@ async def gerar_planilhas_iniciais(app):
             df.to_excel(nome_arquivo, index=False)
             await app.bot.send_document(chat_id=CHAT_ID_USUARIO, document=InputFile(nome_arquivo))
 
-import asyncio
-from telegram.ext import ApplicationBuilder, CommandHandler, ConversationHandler, MessageHandler, filters, Update
-
 app = None  # Global para o app
 
 def main():
@@ -157,4 +159,3 @@ async def iniciar_e_rodar():
 if __name__ == "__main__":
     main()  # Cria e configura o app
     asyncio.run(iniciar_e_rodar())  # Executa a parte async separadamente
-
