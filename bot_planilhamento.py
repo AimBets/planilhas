@@ -141,13 +141,19 @@ async def main_async():
     await gerar_planilhas_iniciais(app)
     await app.run_polling()
 
-if __name__ == "__main__":
+def main():
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(main_async())
-            loop.run_forever()
-        else:
-            asyncio.run(main_async())
+        loop = asyncio.get_running_loop()
     except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # Ambiente já com event loop rodando (ex: notebook, Render)
+        loop.create_task(main_async())
+        loop.run_forever()
+    else:
+        # Ambiente padrão
         asyncio.run(main_async())
+
+if __name__ == "__main__":
+    main()
