@@ -138,19 +138,16 @@ async def main_async():
     app.add_handler(conv)
     app.add_handler(MessageHandler(filters.ALL, salvar_mensagem))
 
-    # Gera as planilhas iniciais antes de iniciar o polling
     await gerar_planilhas_iniciais(app)
-
-    # Roda o bot (bloqueante)
     await app.run_polling()
 
 if __name__ == "__main__":
     try:
-        loop = asyncio.get_running_loop()
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(main_async())
+            loop.run_forever()
+        else:
+            asyncio.run(main_async())
     except RuntimeError:
-        # Nenhum loop rodando, usa asyncio.run normal
         asyncio.run(main_async())
-    else:
-        # Loop já rodando (ex: Render), cria tarefa e mantém o loop vivo
-        loop.create_task(main_async())
-        loop.run_forever()
