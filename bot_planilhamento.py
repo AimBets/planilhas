@@ -1,3 +1,5 @@
+import telegram
+print("📦 Versão do python-telegram-bot:", telegram.__version__)
 import logging
 import os
 import pandas as pd
