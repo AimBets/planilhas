@@ -1,12 +1,8 @@
 import json
 import os
-from datetime import datetime
 import re
 import asyncio
-
 import pandas as pd
-import pytz
-
 from telegram import Update, InputFile
 from telegram.ext import (
     ApplicationBuilder,
@@ -21,14 +17,11 @@ from telegram.constants import ChatAction
 BOT_TOKEN = "8399571746:AAFXxkkJOfOP8cWozYKUnitQTDPTmLpWky8"
 CANAL_ID = -1002780267394
 CHAT_ID_USUARIO = 1454008370
-DATA_SOLICITADA = 0  # Estado da conversa (um inteiro)
-
+DATA_SOLICITADA = 0
 ARQUIVO_DADOS = "dados_salvos.json"
 
-# Garantir pasta de planilhas
 os.makedirs("planilhas", exist_ok=True)
 
-# Carrega mensagens antigas (se existir)
 if os.path.exists(ARQUIVO_DADOS):
     with open(ARQUIVO_DADOS, "r") as f:
         mensagens_salvas = json.load(f)
@@ -41,7 +34,7 @@ def extrair_intervalo(hora: str):
     for inicio, fim in blocos:
         if inicio <= h <= fim:
             return f"{str(inicio).zfill(2)}:00 às {str(fim).zfill(2)}:59"
-    return "00:00 às 03:59"  # fallback caso não entre no intervalo
+    return "00:00 às 03:59"
 
 def extrair_dados(mensagem: str):
     try:
@@ -75,7 +68,6 @@ def extrair_dados(mensagem: str):
             "SALDO": saldo,
             "INTERVALO": intervalo
         }
-
     except Exception as e:
         print("Erro ao extrair dados:", e)
         return None
@@ -135,10 +127,7 @@ async def gerar_planilhas_iniciais(app):
             df.to_excel(nome_arquivo, index=False)
             await app.bot.send_document(chat_id=CHAT_ID_USUARIO, document=InputFile(nome_arquivo))
 
-app = None  # Global para o app
-
 def main():
-    global app
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     conv = ConversationHandler(
@@ -150,12 +139,14 @@ def main():
     app.add_handler(conv)
     app.add_handler(MessageHandler(filters.ALL, salvar_mensagem))
 
+    # Agenda a geração das planilhas iniciais logo após iniciar o bot
+    async def start_jobs(context):
+        await gerar_planilhas_iniciais(app)
 
-async def iniciar_e_rodar():
-    await gerar_planilhas_iniciais(app)
-    await app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.job_queue.run_once(start_jobs, when=0)
 
+    # Roda o bot (gerencia o event loop internamente)
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    main()  # Cria e configura o app
-    asyncio.run(iniciar_e_rodar())  # Executa a parte async separadamente
+    main()
