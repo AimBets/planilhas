@@ -127,6 +127,7 @@ async def gerar_planilhas_iniciais(app):
             await app.bot.send_document(chat_id=CHAT_ID_USUARIO, document=InputFile(nome_arquivo))
 
 def main():
+    global app
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     conv = ConversationHandler(
@@ -137,7 +138,14 @@ def main():
 
     app.add_handler(conv)
     app.add_handler(MessageHandler(filters.ALL, salvar_mensagem))
-    app.run_polling(allowed_updates=Update.ALL_TYPES, post_init=gerar_planilhas_iniciais)
+
+    import asyncio
+    async def iniciar_e_rodar():
+        await gerar_planilhas_iniciais(app)
+        await app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    asyncio.run(iniciar_e_rodar())
+
 
 if __name__ == "__main__":
     main()
