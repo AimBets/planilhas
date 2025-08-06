@@ -5,7 +5,7 @@ import os
 import pandas as pd
 from datetime import datetime, time
 from telegram import Update, ReplyKeyboardRemove
-from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes, ConversationHandler, ChannelPostHandler
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes, ConversationHandler
 import re
 
 BOT_TOKEN = "8399571746:AAFXxkkJOfOP8cWozYKUnitQTDPTmLpWky8"
