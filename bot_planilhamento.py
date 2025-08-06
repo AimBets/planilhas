@@ -126,6 +126,11 @@ async def gerar_planilhas_iniciais(app):
             df.to_excel(nome_arquivo, index=False)
             await app.bot.send_document(chat_id=CHAT_ID_USUARIO, document=InputFile(nome_arquivo))
 
+import asyncio
+from telegram.ext import ApplicationBuilder, CommandHandler, ConversationHandler, MessageHandler, filters, Update
+
+app = None  # Global para o app
+
 def main():
     global app
     app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -139,13 +144,13 @@ def main():
     app.add_handler(conv)
     app.add_handler(MessageHandler(filters.ALL, salvar_mensagem))
 
-    import asyncio
-    async def iniciar_e_rodar():
-        await gerar_planilhas_iniciais(app)
-        await app.run_polling(allowed_updates=Update.ALL_TYPES)
 
-    asyncio.run(iniciar_e_rodar())
+async def iniciar_e_rodar():
+    await gerar_planilhas_iniciais(app)
+    await app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
-    main()
+    main()  # Cria e configura o app
+    asyncio.run(iniciar_e_rodar())  # Executa a parte async separadamente
+
