@@ -12,7 +12,6 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
-from telegram.constants import ChatAction
 
 BOT_TOKEN = "8399571746:AAFXxkkJOfOP8cWozYKUnitQTDPTmLpWky8"
 CANAL_ID = -1002780267394
@@ -127,7 +126,7 @@ async def gerar_planilhas_iniciais(app):
             df.to_excel(nome_arquivo, index=False)
             await app.bot.send_document(chat_id=CHAT_ID_USUARIO, document=InputFile(nome_arquivo))
 
-def main():
+async def main_async():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     conv = ConversationHandler(
@@ -139,14 +138,11 @@ def main():
     app.add_handler(conv)
     app.add_handler(MessageHandler(filters.ALL, salvar_mensagem))
 
-    # Agenda a geração das planilhas iniciais logo após iniciar o bot
-    async def start_jobs(context):
-        await gerar_planilhas_iniciais(app)
+    # Gera planilhas iniciais antes de rodar o bot
+    await gerar_planilhas_iniciais(app)
 
-    app.job_queue.run_once(start_jobs, when=0)
-
-    # Roda o bot (gerencia o event loop internamente)
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Roda o bot (bloqueante)
+    await app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main_async())
