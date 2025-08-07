@@ -118,7 +118,7 @@ async def gerar_planilhas_iniciais(app):
             logging.info(f"Planilha gerada retroativamente: {nome_arquivo}")
 
 # ========== MAIN ==========
-def main():
+async def main_async():
     app = ApplicationBuilder().token(TOKEN).build()
 
     # Handler para mensagens do canal
@@ -133,11 +133,11 @@ def main():
     )
     app.add_handler(conv_handler)
 
-    # Executa a geração retroativa antes de iniciar o bot
-    asyncio.run(gerar_planilhas_iniciais(app))
+    # Geração retroativa ao iniciar
+    await gerar_planilhas_iniciais(app)
 
-    # Inicia o bot
-    app.run_polling()
+    # Start do bot
+    await app.run_polling()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main_async())
