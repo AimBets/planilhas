@@ -8,8 +8,7 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     filters,
-    ContextTypes,
-    ChannelPostHandler
+    ContextTypes
 )
 import pandas as pd
 
