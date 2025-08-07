@@ -17,8 +17,8 @@ import pandas as pd
 
 # =================== CONFIGURAÇÕES ===================
 TOKEN = "8399571746:AAFXxkkJOfOP8cWozYKUnitQTDPTmLpWky8"
-CANAL_ID = -1002780267394  # Substitua com seu chat_id do canal
-USUARIO_ID = 1454008370    # Substitua com seu chat_id de usuário
+CANAL_ID = -1002780267394
+USUARIO_ID = 1454008370
 TIMEZONE = pytz.timezone('America/Sao_Paulo')
 
 # ========== ARMAZENAMENTO EM MEMÓRIA ==========
@@ -31,7 +31,6 @@ logging.basicConfig(
 )
 
 # ========== FUNÇÕES DE UTILIDADE ==========
-
 def extrair_dados(mensagem):
     try:
         linhas = mensagem.split('\n')
@@ -140,7 +139,7 @@ async def main_async():
     # Start do bot
     await app.run_polling()
 
-
+# ========== EXECUÇÃO PRINCIPAL ==========
 if __name__ == '__main__':
     try:
         loop = asyncio.get_running_loop()
@@ -148,8 +147,9 @@ if __name__ == '__main__':
         loop = None
 
     if loop and loop.is_running():
-        # Se já tiver um loop rodando (ex: Jupyter), crie uma task
-        asyncio.create_task(main_async())
+        # Se já tiver loop rodando, crie a task e mantenha o loop vivo
+        loop.create_task(main_async())
+        loop.run_forever()
     else:
-        # Se não tiver loop rodando, rode normalmente
+        # Senão, rode normalmente
         asyncio.run(main_async())
