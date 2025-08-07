@@ -35,49 +35,48 @@ def extrair_dados(mensagem):
         linhas = mensagem.split('\n')
 
         # DATA e HORA da linha 'Atualizado em:'
-        data_hora_match = next((linha for linha in linhas if 'Atualizado em:' in linha), None)
-        if data_hora_match:
-            dh = re.search(r'Atualizado em:\s*(\d{2}/\d{2}/\d{4})\s*(\d{2}:\d{2})', data_hora_match)
-            data = dh.group(1) if dh else ''
-            hora = dh.group(2) if dh else ''
-        else:
-            data = ''
-            hora = ''
+        data = ''
+        hora = ''
+        for linha in linhas:
+            if 'Atualizado em:' in linha:
+                match = re.search(r'Atualizado em:\s*(\d{2}/\d{2}/\d{4})\s*(\d{2}:\d{2})', linha)
+                if match:
+                    data = match.group(1)
+                    hora = match.group(2)
+                break
 
-        # ESPORTE: se achar (Q1), (Q2), (Q3) ou (Q4) na mensagem é basquete 🏀, senão ⚽
-        if any(q in mensagem for q in ['(Q1)', '(Q2)', '(Q3)', '(Q4)']):
-            esporte = '🏀'
-        else:
-            esporte = '⚽'
+        # ESPORTE: se achar (Q1), (Q2), (Q3), (Q4) na mensagem => basquete 🏀, senão futebol ⚽
+        esporte = '🏀' if any(q in mensagem for q in ['(Q1)', '(Q2)', '(Q3)', '(Q4)']) else '⚽'
 
-        # Função para extrair confronto só com nomes no formato "Nome vs Nome"
-        def extrair_confronto(linha_completa):
-            match = re.search(r'([A-Za-zÀ-ÿ\s]+ vs [A-Za-zÀ-ÿ\s]+)', linha_completa)
-            if match:
-                return match.group(1).strip()
-            return ''
+        # Linha que começa com 🏆, contendo estratégia, linha, odd e confronto completo
+        linha_placar = next((linha for linha in linhas if linha.startswith('🏆')), '')
 
-        # CONFRONTO
-        confronto_match = next((linha for linha in linhas if linha.startswith('🏆')), '')
-        confronto = extrair_confronto(confronto_match)
+        # Extrair CONFRONTO ("Nome vs Nome") - regex pega só isso na linha 🏆
+        confronto_match = re.search(r'([A-Za-zÀ-ÿ\s\(\)]+ vs [A-Za-zÀ-ÿ\s\(\)]+)', linha_placar)
+        confronto = confronto_match.group(1).strip() if confronto_match else ''
 
-        # ESTRATÉGIA e LINHA
-        estrategia = ''
-        linha_valor = ''
-        if confronto_match:
-            estr_match = re.search(r'🏆\s*(.+?)\s*@', confronto_match)
-            if estr_match:
-                estrategia_linha = estr_match.group(1).strip()
-                num_match = re.search(r'(\d+\.?\d*)', estrategia_linha)
-                if num_match:
-                    linha_valor = num_match.group(1)
-                    estrategia = estrategia_linha.replace(linha_valor, '').strip()
-                else:
-                    estrategia = estrategia_linha
-
-        # ODD
-        odd_match = re.search(r'@(\d+\.?\d*)', confronto_match)
+        # Extrair ODD (@x.xx)
+        odd_match = re.search(r'@(\d+\.?\d*)', linha_placar)
         odd = odd_match.group(1) if odd_match else ''
+
+        # Extrair LINHA - número decimal que aparece depois da estratégia, antes do @
+        # Exemplo: "Over Asiático 1°T 1.75"
+        # Vamos pegar o número decimal antes do @
+        linha_valor = ''
+        estrategia = ''
+        if linha_placar:
+            # Pega o texto entre '🏆 ' e ' @'
+            estr_linha_match = re.search(r'🏆 (.+?) @', linha_placar)
+            if estr_linha_match:
+                texto_estr_linha = estr_linha_match.group(1).strip()
+                # Agora extrai o último número decimal do texto, que é a linha
+                numeros = re.findall(r'\d+\.?\d*', texto_estr_linha)
+                if numeros:
+                    linha_valor = numeros[-1]
+                    # Estratégia = texto_estr_linha sem esse número
+                    estrategia = texto_estr_linha.replace(linha_valor, '').strip()
+                else:
+                    estrategia = texto_estr_linha
 
         # RESULTADO e SALDO
         resultado = ''
@@ -93,7 +92,8 @@ def extrair_dados(mensagem):
                 if lucro_match:
                     saldo = lucro_match.group(0)
 
-        # INTERVALO baseado na hora
+        # INTERVALO baseado na HORA extraída
+        intervalo = ''
         if hora:
             hora_int = int(hora.split(':')[0])
             if 0 <= hora_int < 4:
@@ -108,8 +108,6 @@ def extrair_dados(mensagem):
                 intervalo = '16:00 às 19:59'
             else:
                 intervalo = '20:00 às 23:59'
-        else:
-            intervalo = ''
 
         return {
             'DATA': data,
