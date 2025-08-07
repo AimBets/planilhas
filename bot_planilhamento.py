@@ -32,29 +32,61 @@ logging.basicConfig(
 def extrair_dados(mensagem):
     try:
         linhas = mensagem.split('\n')
-        esporte = '🏀' if any('(Q' in linha for linha in linhas) else '⚽️'
+        texto = mensagem  # para regex completo
 
-        confronto = next((linha.split(': ')[1] for linha in linhas if 'Confronto:' in linha), '')
-        estrategia = next((linha.split('🏆 ')[1] for linha in linhas if '🏆' in linha), '')
-        linha_info = next((linha for linha in linhas if '@' in linha), '')
-        linha = linha_info.split('@')[0].strip() if linha_info else ''
-        odd = linha_info.split('@')[1].strip() if linha_info else ''
-        resultado = 'Green' if '✅' in mensagem else 'Red' if '🔴' in mensagem else ''
-        saldo = "+100" if resultado == "Green" else "-100" if resultado == "Red" else "0"
+        # ESPORTE: 🏀 se contém (Q1),(Q2),(Q3),(Q4), senão ⚽️
+        esporte = '🏀' if any(q in mensagem for q in ['(Q1)', '(Q2)', '(Q3)', '(Q4)']) else '⚽️'
 
-        now = datetime.now(TIMEZONE)
-        hora = now.strftime('%H:%M')
-        data = now.strftime('%d/%m/%Y')
+        import re
 
-        hora_int = now.hour
-        if 0 <= hora_int < 6:
-            intervalo = 'MADRUGADA'
-        elif 6 <= hora_int < 12:
-            intervalo = 'MANHÃ'
-        elif 12 <= hora_int < 18:
-            intervalo = 'TARDE'
+        # CONFRONTO: pega só os nomes entre @ e - 🔢
+        confronto_match = re.search(r'@[\d.]+\s*-\s*(.*?)\s*-\s*🔢', texto)
+        confronto = confronto_match.group(1).strip() if confronto_match else ''
+
+        # ESTRATÉGIA: texto após 🏆 até antes do @
+        estrategia_match = re.search(r'🏆\s*(.*?)\s*@', texto)
+        estrategia = estrategia_match.group(1).strip() if estrategia_match else ''
+
+        # LINHA: número antes do @ (ex: 2.75)
+        linha_match = re.search(r'🏆\s*.*?(\d+\.?\d*)\s*@', texto)
+        linha = linha_match.group(1) if linha_match else ''
+
+        # ODD: número após @
+        odd_match = re.search(r'@(\d+\.?\d*)', texto)
+        odd = odd_match.group(1) if odd_match else ''
+
+        # RESULTADO: Status da Aposta (ex: Green, Red, Half_green)
+        resultado_match = re.search(r'Status da Aposta:\s*([^\n]+)', texto)
+        resultado = resultado_match.group(1).strip() if resultado_match else ''
+
+        # SALDO: pega valor após "Lucro: "
+        saldo_match = re.search(r'Lucro:\s*([-\d.,]+)', texto)
+        saldo = saldo_match.group(1).replace(',', '.') if saldo_match else ''
+
+        # DATA e HORA da linha "Atualizado em:"
+        atualizado_match = re.search(r'Atualizado em:\s*(\d{2}/\d{2}/\d{4})\s*(\d{2}:\d{2})', texto)
+        if atualizado_match:
+            data = atualizado_match.group(1)
+            hora = atualizado_match.group(2)
         else:
-            intervalo = 'NOITE'
+            now = datetime.now(TIMEZONE)
+            data = now.strftime('%d/%m/%Y')
+            hora = now.strftime('%H:%M')
+
+        # INTERVALO: baseado na hora, formato exato solicitado
+        h = int(hora.split(':')[0])
+        if 0 <= h <= 3:
+            intervalo = '00:00 às 03:59'
+        elif 4 <= h <= 7:
+            intervalo = '04:00 às 07:59'
+        elif 8 <= h <= 11:
+            intervalo = '08:00 às 11:59'
+        elif 12 <= h <= 15:
+            intervalo = '12:00 às 15:59'
+        elif 16 <= h <= 19:
+            intervalo = '16:00 às 19:59'
+        else:
+            intervalo = '20:00 às 23:59'
 
         return {
             'DATA': data,
