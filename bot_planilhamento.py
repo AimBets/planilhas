@@ -132,7 +132,10 @@ def main():
     async def post_init(app):
         await gerar_planilhas_iniciais(app)
 
-    app.run_polling(post_init=post_init)
+    # ✅ Aqui está a correção
+    app.post_init = post_init
+
+    app.run_polling()
 
 if __name__ == '__main__':
     main()
