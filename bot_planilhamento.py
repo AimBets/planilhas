@@ -3,7 +3,7 @@ import os
 import pytz
 from datetime import datetime
 from telegram import Update
-from telegram.ext import (
+from telegram.ext import MessageHandler, filters (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
@@ -135,7 +135,7 @@ def main():
     logging.basicConfig(level=logging.INFO)
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(ChannelPostHandler(salvar_aposta))
+    app.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST, salvar_aposta))
     app.add_handler(CommandHandler("gerar", gerar_planilha))
     app.add_handler(MessageHandler(filters.TEXT & filters.USER(user_id=CHAT_ID_USUARIO), receber_data))
 
