@@ -32,9 +32,10 @@ logging.basicConfig(
 # ========== FUNÇÃO DE EXTRAÇÃO ==========
 def extrair_dados(mensagem):
     try:
-        # Só extrair se for mensagem de status final
-        if not all(x in mensagem for x in ["Status da Aposta:", "Lucro:", "Atualizado em:"]):
-            return None
+        # Só processar mensagens que contêm uma aposta (ex: que têm o símbolo 🏆 e @odd)
+if "🏆" not in mensagem or "@" not in mensagem:
+    return None
+
 
         texto = mensagem
 
@@ -166,7 +167,8 @@ def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     canal_handler = MessageHandler(filters.ALL & filters.Chat(CANAL_ID), receber_mensagem)
-    app.add_handler(canal_handler)
+    edit_handler = MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.Chat(CANAL_ID), receber_mensagem)
+    app.add_handler(edit_handler)
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("gerar", gerar)],
