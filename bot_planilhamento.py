@@ -1,3 +1,4 @@
+import re
 import logging
 import os
 import pytz
@@ -32,29 +33,83 @@ logging.basicConfig(
 def extrair_dados(mensagem):
     try:
         linhas = mensagem.split('\n')
-        esporte = '🏀' if any('(Q' in linha for linha in linhas) else '⚽️'
 
-        confronto = next((linha.split(': ')[1] for linha in linhas if 'Confronto:' in linha), '')
-        estrategia = next((linha.split('🏆 ')[1] for linha in linhas if '🏆' in linha), '')
-        linha_info = next((linha for linha in linhas if '@' in linha), '')
-        linha = linha_info.split('@')[0].strip() if linha_info else ''
-        odd = linha_info.split('@')[1].strip() if linha_info else ''
-        resultado = 'Green' if '✅' in mensagem else 'Red' if '🔴' in mensagem else ''
-        saldo = "+100" if resultado == "Green" else "-100" if resultado == "Red" else "0"
-
-        now = datetime.now(TIMEZONE)
-        hora = now.strftime('%H:%M')
-        data = now.strftime('%d/%m/%Y')
-
-        hora_int = now.hour
-        if 0 <= hora_int < 6:
-            intervalo = 'MADRUGADA'
-        elif 6 <= hora_int < 12:
-            intervalo = 'MANHÃ'
-        elif 12 <= hora_int < 18:
-            intervalo = 'TARDE'
+        # DATA e HORA da linha 'Atualizado em:'
+        data_hora_match = next((linha for linha in linhas if 'Atualizado em:' in linha), None)
+        if data_hora_match:
+            dh = re.search(r'Atualizado em:\s*(\d{2}/\d{2}/\d{4})\s*(\d{2}:\d{2})', data_hora_match)
+            data = dh.group(1) if dh else ''
+            hora = dh.group(2) if dh else ''
         else:
-            intervalo = 'NOITE'
+            data = ''
+            hora = ''
+
+        # ESPORTE: se achar (Q1), (Q2), (Q3) ou (Q4) na mensagem é basquete 🏀, senão ⚽
+        if any(q in mensagem for q in ['(Q1)', '(Q2)', '(Q3)', '(Q4)']):
+            esporte = '🏀'
+        else:
+            esporte = '⚽'
+
+        # Função para extrair confronto só com nomes no formato "Nome vs Nome"
+        def extrair_confronto(linha_completa):
+            match = re.search(r'([A-Za-zÀ-ÿ\s]+ vs [A-Za-zÀ-ÿ\s]+)', linha_completa)
+            if match:
+                return match.group(1).strip()
+            return ''
+
+        # CONFRONTO
+        confronto_match = next((linha for linha in linhas if linha.startswith('🏆')), '')
+        confronto = extrair_confronto(confronto_match)
+
+        # ESTRATÉGIA e LINHA
+        estrategia = ''
+        linha_valor = ''
+        if confronto_match:
+            estr_match = re.search(r'🏆\s*(.+?)\s*@', confronto_match)
+            if estr_match:
+                estrategia_linha = estr_match.group(1).strip()
+                num_match = re.search(r'(\d+\.?\d*)', estrategia_linha)
+                if num_match:
+                    linha_valor = num_match.group(1)
+                    estrategia = estrategia_linha.replace(linha_valor, '').strip()
+                else:
+                    estrategia = estrategia_linha
+
+        # ODD
+        odd_match = re.search(r'@(\d+\.?\d*)', confronto_match)
+        odd = odd_match.group(1) if odd_match else ''
+
+        # RESULTADO e SALDO
+        resultado = ''
+        saldo = ''
+        for linha in linhas:
+            if 'Status da Aposta:' in linha:
+                if '✅' in linha or 'Green' in linha:
+                    resultado = 'Green'
+                elif '❌' in linha or 'Red' in linha:
+                    resultado = 'Red'
+            if 'Lucro:' in linha:
+                lucro_match = re.search(r'(-?\d+\.?\d*)\s*Un', linha)
+                if lucro_match:
+                    saldo = lucro_match.group(0)
+
+        # INTERVALO baseado na hora
+        if hora:
+            hora_int = int(hora.split(':')[0])
+            if 0 <= hora_int < 4:
+                intervalo = '00:00 às 03:59'
+            elif 4 <= hora_int < 8:
+                intervalo = '04:00 às 07:59'
+            elif 8 <= hora_int < 12:
+                intervalo = '08:00 às 11:59'
+            elif 12 <= hora_int < 16:
+                intervalo = '12:00 às 15:59'
+            elif 16 <= hora_int < 20:
+                intervalo = '16:00 às 19:59'
+            else:
+                intervalo = '20:00 às 23:59'
+        else:
+            intervalo = ''
 
         return {
             'DATA': data,
@@ -62,12 +117,13 @@ def extrair_dados(mensagem):
             'ESPORTE': esporte,
             'CONFRONTO': confronto,
             'ESTRATÉGIA': estrategia,
-            'LINHA': linha,
+            'LINHA': linha_valor,
             'ODD': odd,
             'RESULTADO': resultado,
             'SALDO': saldo,
             'INTERVALO': intervalo
         }
+
     except Exception as e:
         logging.error(f"Erro ao extrair dados: {e}")
         return None
