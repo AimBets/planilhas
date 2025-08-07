@@ -9,7 +9,6 @@ from telegram.ext import (
     ContextTypes,
     MessageHandler,
     filters,
-    ChannelPostHandler
 )
 from openpyxl import Workbook
 
@@ -112,7 +111,7 @@ async def receber_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(ChannelPostHandler(salvar_mensagem))
+    app.add_handler(MessageHandler(filters.ChannelPost, handle_channel_post))
 
     from telegram.ext import ConversationHandler
     conv_handler = ConversationHandler(
