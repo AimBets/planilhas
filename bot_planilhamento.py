@@ -34,7 +34,7 @@ def extrair_dados(mensagem):
     try:
         # Só processar mensagens que contêm uma aposta (mínimo: estratégia e odd)
         if "🏆" not in mensagem or "@" not in mensagem:
-
+            return None
 
         texto = mensagem
 
