@@ -1,8 +1,6 @@
 import logging
 import os
 import pytz
-import asyncio
-import sys
 from datetime import datetime
 from telegram import Update
 from telegram.ext import (
@@ -117,15 +115,13 @@ async def gerar_planilhas_iniciais(app):
             df.to_excel(nome_arquivo, index=False)
             logging.info(f"Planilha gerada retroativamente: {nome_arquivo}")
 
-# ========== MAIN ==========
-async def main_async():
+# ========== FUNÇÃO MAIN ==========
+def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Handler para mensagens do canal
     canal_handler = MessageHandler(filters.ALL & filters.Chat(CANAL_ID), receber_mensagem)
     app.add_handler(canal_handler)
 
-    # Handler para comando /gerar
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("gerar", gerar)],
         states={GERAR_DATA: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_data)]},
@@ -133,23 +129,10 @@ async def main_async():
     )
     app.add_handler(conv_handler)
 
-    # Geração retroativa ao iniciar
-    await gerar_planilhas_iniciais(app)
+    async def post_init(app):
+        await gerar_planilhas_iniciais(app)
 
-    # Start do bot
-    await app.run_polling()
+    app.run_polling(post_init=post_init)
 
-# ========== EXECUÇÃO PRINCIPAL ==========
 if __name__ == '__main__':
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    if loop and loop.is_running():
-        # Se já tiver loop rodando, crie a task e mantenha o loop vivo
-        loop.create_task(main_async())
-        loop.run_forever()
-    else:
-        # Senão, rode normalmente
-        asyncio.run(main_async())
+    main()
