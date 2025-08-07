@@ -26,15 +26,31 @@ def intervalo_por_hora(hora: str):
 # ============ EXTRAÇÃO DE DADOS ============
 def extrair_dados(texto):
     try:
-        status = re.search(r"Status da Aposta: (✅ Green|❌ Red|🟡 Anulada)", texto).group(1)
-        lucro = float(re.search(r"Lucro: ([\d.,\-]+)", texto).group(1).replace(",", "."))
-        atualizado = re.search(r"Atualizado em: (\d{2}/\d{2}/\d{4} \d{2}:\d{2})", texto).group(1)
+        if "Status da Aposta:" not in texto or "Atualizado em:" not in texto:
+            return None
 
-        linha_odd_confronto = re.search(r"🏆 (.+?) @([\d.]+) - (.+?) -", texto)
-        estrategia = linha_odd_confronto.group(1).split(" ")[0]
-        linha = linha_odd_confronto.group(1).split(" ")[-1]
-        odd = linha_odd_confronto.group(2)
-        confronto = linha_odd_confronto.group(3)
+        status_match = re.search(r"Status da Aposta: (✅ Green|❌ Red|🟡 Anulada)", texto)
+        lucro_match = re.search(r"Lucro: ([\d.,\-]+)", texto)
+        atualizado_match = re.search(r"Atualizado em: (\d{2}/\d{2}/\d{4} \d{2}:\d{2})", texto)
+        evento_match = re.search(r"🏆 (.+?) @([\d.]+) - (.+?) -", texto)
+        tempo_match = re.search(r"🕒 ([\d:]+(?: \(Q[1-4]\))?)", texto)
+
+        if not all([status_match, lucro_match, atualizado_match, evento_match, tempo_match]):
+            logger.warning(f"Mensagem ignorada, dados incompletos:\n{texto}")
+            return None
+
+        status = status_match.group(1)
+        lucro = float(lucro_match.group(1).replace(",", "."))
+        atualizado = atualizado_match.group(1)
+
+        estrategia_linha = evento_match.group(1).rsplit(" ", 1)
+        estrategia = estrategia_linha[0]
+        linha = estrategia_linha[1]
+        odd = evento_match.group(2)
+        confronto = evento_match.group(3)
+
+        tempo_str = tempo_match.group(1)
+        esporte = "🏀" if any(q in tempo_str for q in ["Q1", "Q2", "Q3", "Q4"]) else "⚽️"
 
         dt_obj = datetime.strptime(atualizado, "%d/%m/%Y %H:%M")
         data = dt_obj.strftime("%d/%m/%Y")
@@ -44,7 +60,7 @@ def extrair_dados(texto):
         return {
             "DATA": data,
             "HORA": hora,
-            "ESPORTE": "⚽️",
+            "ESPORTE": esporte,
             "CONFRONTO": confronto,
             "ESTRATÉGIA": estrategia,
             "LINHA": linha,
@@ -54,8 +70,9 @@ def extrair_dados(texto):
             "INTERVALO": intervalo
         }
     except Exception as e:
-        logger.error(f"Erro ao extrair dados: {e}")
+        logger.error(f"Erro ao extrair dados: {e}\nMensagem:\n{texto}")
         return None
+
 
 # ============ SALVAR NA BASE ============
 def salvar_dados(dados):
