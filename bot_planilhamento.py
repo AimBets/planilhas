@@ -29,70 +29,52 @@ logging.basicConfig(
 )
 
 # ========== FUNÇÕES DE UTILIDADE ==========
+# Defina o fuso horário
+TIMEZONE = pytz.timezone("America/Sao_Paulo")
+
 def extrair_dados(mensagem):
     try:
-        import re
-
         linhas = mensagem.split('\n')
 
-        # 🏀 se houver menção a períodos de basquete
+        # Esporte: 🏀 se tiver (Q1)...(Q4), senão ⚽️
         if any(q in mensagem for q in ['(Q1)', '(Q2)', '(Q3)', '(Q4)']):
             esporte = '🏀'
         else:
             esporte = '⚽️'
 
-        # Extrair estratégia
-        estrategia = next((linha.replace('🏆 ', '').split(' @')[0] for linha in linhas if '🏆' in linha), '')
+        # Confronto: extrai só nomes dos jogadores
+        confronto_linha = next((linha for linha in linhas if 'Confronto:' in linha), '')
+        confronto = confronto_linha.split(':')[1].strip() if ':' in confronto_linha else ''
+        confronto = confronto.replace('Confronto:', '').strip()
 
-        # Extrair linha e odd (da primeira ocorrência com @)
+        # Estratégia
+        estrategia_linha = next((linha for linha in linhas if '🏆' in linha), '')
+        estrategia = estrategia_linha.split('🏆')[1].strip() if '🏆' in estrategia_linha else ''
+
+        # Linha e odd
         linha_info = next((linha for linha in linhas if '@' in linha), '')
-        linha_match = re.search(r'([\d.]+)\s*@\s*([\d.]+)', linha_info)
-        if linha_match:
-            linha = linha_match.group(1)
-            odd = linha_match.group(2)
-        else:
-            linha = ''
-            odd = ''
-
-        # Extrair confronto: nome vs nome
-        confronto_match = re.search(r'([A-Za-zÀ-ÿ0-9\s().\-]+ vs [A-Za-zÀ-ÿ0-9\s().\-]+)', mensagem)
-        confronto = confronto_match.group(1).strip() if confronto_match else ''
+        linha = linha_info.split('@')[0].strip() if '@' in linha_info else ''
+        odd = linha_info.split('@')[1].strip() if '@' in linha_info else ''
 
         # Resultado
-        if '✅' in mensagem or 'Green' in mensagem:
-            resultado = 'Green'
-        elif '❌' in mensagem or 'Red' in mensagem:
-            resultado = 'Red'
-        else:
-            resultado = ''
+        resultado = 'Green' if '✅' in mensagem else 'Red' if '🔴' in mensagem else ''
+        saldo = "+100" if resultado == "Green" else "-100" if resultado == "Red" else "0"
 
-        # Extrair saldo
-        saldo_match = re.search(r'Lucro:\s*([+-]?[0-9.]+)\s*Un', mensagem)
-        saldo = saldo_match.group(1) + " Un" if saldo_match else "0"
+        # Data e hora
+        now = datetime.now(TIMEZONE)
+        hora = now.strftime('%H:%M')
+        data = now.strftime('%d/%m/%Y')
 
-        # Data e hora atual (baseado em 'Atualizado em')
-        atualizado_match = re.search(r'Atualizado em:\s*(\d{2}/\d{2}/\d{4})\s*(\d{2}:\d{2})', mensagem)
-        if atualizado_match:
-            data = atualizado_match.group(1)
-            hora = atualizado_match.group(2)
+        # Intervalo
+        hora_int = now.hour
+        if 0 <= hora_int < 6:
+            intervalo = 'MADRUGADA'
+        elif 6 <= hora_int < 12:
+            intervalo = 'MANHÃ'
+        elif 12 <= hora_int < 18:
+            intervalo = 'TARDE'
         else:
-            now = datetime.now(TIMEZONE)
-            data = now.strftime('%d/%m/%Y')
-            hora = now.strftime('%H:%M')
-
-        hora_int = int(hora.split(':')[0])
-        if 0 <= hora_int < 4:
-            intervalo = '00:00 às 03:59'
-        elif 4 <= hora_int < 8:
-            intervalo = '04:00 às 07:59'
-        elif 8 <= hora_int < 12:
-            intervalo = '08:00 às 11:59'
-        elif 12 <= hora_int < 16:
-            intervalo = '12:00 às 15:59'
-        elif 16 <= hora_int < 20:
-            intervalo = '16:00 às 19:59'
-        else:
-            intervalo = '20:00 às 23:59'
+            intervalo = 'NOITE'
 
         return {
             'DATA': data,
@@ -106,10 +88,10 @@ def extrair_dados(mensagem):
             'SALDO': saldo,
             'INTERVALO': intervalo
         }
+
     except Exception as e:
         logging.error(f"Erro ao extrair dados: {e}")
         return None
-
 
 # ========== HANDLER DE MENSAGENS DO CANAL ==========
 async def receber_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
