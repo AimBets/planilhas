@@ -29,41 +29,51 @@ logging.basicConfig(
 )
 
 # ========== FUNÇÕES DE UTILIDADE ==========
+# ... (todas as importações e configurações anteriores iguais)
+
 def extrair_dados(mensagem):
     try:
         linhas = mensagem.split('\n')
         texto = mensagem  # para regex completo
 
-        # ESPORTE: 🏀 se contém (Q1),(Q2),(Q3),(Q4), senão ⚽️
         esporte = '🏀' if any(q in mensagem for q in ['(Q1)', '(Q2)', '(Q3)', '(Q4)']) else '⚽️'
 
         import re
 
-        # CONFRONTO: pega só os nomes entre @ e - 🔢
         confronto_match = re.search(r'@[\d.]+\s*-\s*(.*?)\s*-\s*🔢', texto)
         confronto = confronto_match.group(1).strip() if confronto_match else ''
 
-        # ESTRATÉGIA: texto após 🏆 até antes do @
         estrategia_match = re.search(r'🏆\s*(.*?)\s*@', texto)
         estrategia = estrategia_match.group(1).strip() if estrategia_match else ''
 
-        # LINHA: número antes do @ (ex: 2.75)
         linha_match = re.search(r'🏆\s*.*?(\d+\.?\d*)\s*@', texto)
         linha = linha_match.group(1) if linha_match else ''
 
-        # ODD: número após @
         odd_match = re.search(r'@(\d+\.?\d*)', texto)
         odd = odd_match.group(1) if odd_match else ''
 
-        # RESULTADO: Status da Aposta (ex: Green, Red, Half_green)
-        resultado_match = re.search(r'Status da Aposta:\s*([^\n]+)', texto)
-        resultado = resultado_match.group(1).strip() if resultado_match else ''
+        # 🟩🟥✅❌⚪ Resultado
+        resultado = ''
+        saldo = ''
 
-        # SALDO: pega valor após "Lucro: "
-        saldo_match = re.search(r'Lucro:\s*([-\d.,]+)', texto)
-        saldo = saldo_match.group(1).replace(',', '.') if saldo_match else ''
+        if '✅' in texto:
+            resultado = 'Green'
+            lucro_match = re.search(r'Lucro:\s*([-\d.,]+)', texto)
+            saldo = lucro_match.group(1).replace(',', '.') if lucro_match else ''
+        elif '❌' in texto:
+            resultado = 'Red'
+            saldo = '-1'
+        elif '🟩' in texto:
+            resultado = 'Half_green'
+            lucro_match = re.search(r'Lucro:\s*([-\d.,]+)', texto)
+            saldo = lucro_match.group(1).replace(',', '.') if lucro_match else ''
+        elif '🟥' in texto:
+            resultado = 'Half_red'
+            saldo = '-0.5'
+        elif '⚪' in texto:
+            resultado = 'Void'
+            saldo = '0'
 
-        # DATA e HORA da linha "Atualizado em:"
         atualizado_match = re.search(r'Atualizado em:\s*(\d{2}/\d{2}/\d{4})\s*(\d{2}:\d{2})', texto)
         if atualizado_match:
             data = atualizado_match.group(1)
@@ -73,7 +83,6 @@ def extrair_dados(mensagem):
             data = now.strftime('%d/%m/%Y')
             hora = now.strftime('%H:%M')
 
-        # INTERVALO: baseado na hora, formato exato solicitado
         h = int(hora.split(':')[0])
         if 0 <= h <= 3:
             intervalo = '00:00 às 03:59'
