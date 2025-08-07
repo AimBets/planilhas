@@ -33,9 +33,12 @@ logging.basicConfig(
 
 def extrair_dados(mensagem):
     try:
-        linhas = mensagem.split('\n')
-        texto = mensagem  # para regex completo
+        # Só processa apostas finalizadas (com Status + Lucro + Atualizado)
+        if not all(keyword in mensagem for keyword in ["Status da Aposta", "Lucro:", "Atualizado em:"]):
+            return None
 
+        linhas = mensagem.split('\n')
+        texto = mensagem
         esporte = '🏀' if any(q in mensagem for q in ['(Q1)', '(Q2)', '(Q3)', '(Q4)']) else '⚽️'
 
         import re
@@ -52,7 +55,6 @@ def extrair_dados(mensagem):
         odd_match = re.search(r'@(\d+\.?\d*)', texto)
         odd = odd_match.group(1) if odd_match else ''
 
-        # 🟩🟥✅❌⚪ Resultado
         resultado = ''
         saldo = ''
 
@@ -112,6 +114,7 @@ def extrair_dados(mensagem):
     except Exception as e:
         logging.error(f"Erro ao extrair dados: {e}")
         return None
+
 
 # ========== HANDLER DE MENSAGENS DO CANAL ==========
 async def receber_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
