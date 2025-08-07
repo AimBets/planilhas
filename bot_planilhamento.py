@@ -1,4 +1,3 @@
-import re
 import logging
 import os
 import pytz
@@ -32,78 +31,68 @@ logging.basicConfig(
 # ========== FUNÇÕES DE UTILIDADE ==========
 def extrair_dados(mensagem):
     try:
+        import re
+
         linhas = mensagem.split('\n')
 
-        data = ''
-        hora = ''
-        for linha in linhas:
-            if 'Atualizado em:' in linha:
-                match = re.search(r'Atualizado em:\s*(\d{2}/\d{2}/\d{4})\s*(\d{2}:\d{2})', linha)
-                if match:
-                    data = match.group(1)
-                    hora = match.group(2)
-                break
+        # 🏀 se houver menção a períodos de basquete
+        if any(q in mensagem for q in ['(Q1)', '(Q2)', '(Q3)', '(Q4)']):
+            esporte = '🏀'
+        else:
+            esporte = '⚽️'
 
-        esporte = '🏀' if any(q in mensagem for q in ['(Q1)', '(Q2)', '(Q3)', '(Q4)']) else '⚽'
+        # Extrair estratégia
+        estrategia = next((linha.replace('🏆 ', '').split(' @')[0] for linha in linhas if '🏆' in linha), '')
 
-        linha_placar = next((linha for linha in linhas if linha.startswith('🏆')), '')
+        # Extrair linha e odd (da primeira ocorrência com @)
+        linha_info = next((linha for linha in linhas if '@' in linha), '')
+        linha_match = re.search(r'([\d.]+)\s*@\s*([\d.]+)', linha_info)
+        if linha_match:
+            linha = linha_match.group(1)
+            odd = linha_match.group(2)
+        else:
+            linha = ''
+            odd = ''
 
-        confronto = ''
-        if linha_placar:
-            confronto_match = re.search(r'([A-Za-zÀ-ÿ\s\(\)]+ vs [A-Za-zÀ-ÿ\s\(\)]+)', linha_placar)
-            confronto = confronto_match.group(1).strip() if confronto_match else ''
+        # Extrair confronto: nome vs nome
+        confronto_match = re.search(r'([A-Za-zÀ-ÿ0-9\s().\-]+ vs [A-Za-zÀ-ÿ0-9\s().\-]+)', mensagem)
+        confronto = confronto_match.group(1).strip() if confronto_match else ''
 
-        odd = ''
-        if linha_placar:
-            odd_match = re.search(r'@(\d+\.?\d*)', linha_placar)
-            odd = odd_match.group(1) if odd_match else ''
+        # Resultado
+        if '✅' in mensagem or 'Green' in mensagem:
+            resultado = 'Green'
+        elif '❌' in mensagem or 'Red' in mensagem:
+            resultado = 'Red'
+        else:
+            resultado = ''
 
-        linha_valor = ''
-        estrategia = ''
-        if linha_placar:
-            estr_linha_match = re.search(r'🏆 (.+?) @', linha_placar)
-            if estr_linha_match:
-                texto_estr_linha = estr_linha_match.group(1).strip()
-                numeros = re.findall(r'\d+\.?\d*', texto_estr_linha)
-                if numeros:
-                    linha_valor = numeros[-1]
-                    estrategia = texto_estr_linha.replace(linha_valor, '').strip()
-                else:
-                    estrategia = texto_estr_linha
+        # Extrair saldo
+        saldo_match = re.search(r'Lucro:\s*([+-]?[0-9.]+)\s*Un', mensagem)
+        saldo = saldo_match.group(1) + " Un" if saldo_match else "0"
 
-        resultado = ''
-        saldo = ''
-        for linha in linhas:
-            if 'Status da Aposta:' in linha:
-                if '✅' in linha or 'Green' in linha:
-                    resultado = 'Green'
-                elif '❌' in linha or 'Red' in linha:
-                    resultado = 'Red'
-            if 'Lucro:' in linha:
-                lucro_match = re.search(r'(-?\d+\.?\d*)\s*Un', linha)
-                if lucro_match:
-                    saldo = lucro_match.group(0)
+        # Data e hora atual (baseado em 'Atualizado em')
+        atualizado_match = re.search(r'Atualizado em:\s*(\d{2}/\d{2}/\d{4})\s*(\d{2}:\d{2})', mensagem)
+        if atualizado_match:
+            data = atualizado_match.group(1)
+            hora = atualizado_match.group(2)
+        else:
+            now = datetime.now(TIMEZONE)
+            data = now.strftime('%d/%m/%Y')
+            hora = now.strftime('%H:%M')
 
-        intervalo = ''
-        if hora:
-            hora_int = int(hora.split(':')[0])
-            if 0 <= hora_int < 4:
-                intervalo = '00:00 às 03:59'
-            elif 4 <= hora_int < 8:
-                intervalo = '04:00 às 07:59'
-            elif 8 <= hora_int < 12:
-                intervalo = '08:00 às 11:59'
-            elif 12 <= hora_int < 16:
-                intervalo = '12:00 às 15:59'
-            elif 16 <= hora_int < 20:
-                intervalo = '16:00 às 19:59'
-            else:
-                intervalo = '20:00 às 23:59'
-
-        # Validar que dados essenciais estão presentes
-        if not (data and hora and confronto and estrategia and linha_valor and odd and resultado):
-            logging.warning(f"Dados incompletos extraídos: {data=}, {hora=}, {confronto=}, {estrategia=}, {linha_valor=}, {odd=}, {resultado=}")
-            return None
+        hora_int = int(hora.split(':')[0])
+        if 0 <= hora_int < 4:
+            intervalo = '00:00 às 03:59'
+        elif 4 <= hora_int < 8:
+            intervalo = '04:00 às 07:59'
+        elif 8 <= hora_int < 12:
+            intervalo = '08:00 às 11:59'
+        elif 12 <= hora_int < 16:
+            intervalo = '12:00 às 15:59'
+        elif 16 <= hora_int < 20:
+            intervalo = '16:00 às 19:59'
+        else:
+            intervalo = '20:00 às 23:59'
 
         return {
             'DATA': data,
@@ -111,16 +100,16 @@ def extrair_dados(mensagem):
             'ESPORTE': esporte,
             'CONFRONTO': confronto,
             'ESTRATÉGIA': estrategia,
-            'LINHA': linha_valor,
+            'LINHA': linha,
             'ODD': odd,
             'RESULTADO': resultado,
             'SALDO': saldo,
             'INTERVALO': intervalo
         }
-
     except Exception as e:
         logging.error(f"Erro ao extrair dados: {e}")
         return None
+
 
 # ========== HANDLER DE MENSAGENS DO CANAL ==========
 async def receber_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
