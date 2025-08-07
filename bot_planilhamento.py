@@ -1,145 +1,146 @@
 import logging
 import os
-import csv
+import pytz
 from datetime import datetime
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes, ConversationHandler
-import re
-import pytz
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
+    ChannelPostHandler
+)
+import pandas as pd
 
-# ============ CONFIGURAÇÕES ============
+# ========================
+# CONFIGURAÇÕES
+# ========================
 TOKEN = "8399571746:AAFXxkkJOfOP8cWozYKUnitQTDPTmLpWky8"
-CANAL_ID = -1002780267394
-CAMINHO_BASE = "planilha_base.csv"
+CHAT_ID_USUARIO = 1454008370
+CHAT_ID_CANAL = -1002780267394
+FUSO = pytz.timezone("America/Sao_Paulo")
 
-# ============ LOG ============
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# ========================
+# VARIÁVEL GLOBAL
+# ========================
+apostas_salvas = []
 
-# ============ INTERVALO DE HORAS ============
-def intervalo_por_hora(hora: str):
-    h = int(hora.split(":")[0])
-    inicio = (h // 4) * 4
-    fim = inicio + 3
-    return f"{str(inicio).zfill(2)}:00 às {str(fim).zfill(2)}:59"
-
-# ============ EXTRAÇÃO DE DADOS ============
-def extrair_dados(texto):
+# ========================
+# FUNÇÃO: EXTRAI DADOS
+# ========================
+def extrair_dados(mensagem: str, data: datetime) -> dict | None:
     try:
-        if "Status da Aposta:" not in texto or "Atualizado em:" not in texto:
-            return None
+        esporte = "🏀 Basquete" if any(f"(Q{i})" in mensagem for i in range(1, 5)) else "⚽️ Futebol"
+        confronto = mensagem.split("Confronto:")[1].split("\n")[0].strip()
+        estrategia = mensagem.split("🏆")[1].split("@")[0].strip()
+        linha = "@" + mensagem.split("@")[1].split("\n")[0].strip()
+        odd = linha.split("@")[1]
+        resultado = "GREEN" if "✅" in mensagem.upper() else "RED" if "❌" in mensagem.upper() else "?"
+        saldo = f"+{float(odd) - 1:.2f}" if resultado == "GREEN" else "-1.00" if resultado == "RED" else "0.00"
 
-        status_match = re.search(r"Status da Aposta: (✅ Green|❌ Red|🟡 Anulada)", texto)
-        lucro_match = re.search(r"Lucro: ([\d.,\-]+)", texto)
-        atualizado_match = re.search(r"Atualizado em: (\d{2}/\d{2}/\d{4} \d{2}:\d{2})", texto)
-        evento_match = re.search(r"🏆 (.+?) @([\d.]+) - (.+?) -", texto)
-        tempo_match = re.search(r"🕒 ([\d:]+(?: \(Q[1-4]\))?)", texto)
+        hora_str = mensagem.split("🕒")[1].split("\n")[0].strip()
+        hora = datetime.strptime(hora_str, "%H:%M").time()
 
-        if not all([status_match, lucro_match, atualizado_match, evento_match, tempo_match]):
-            logger.warning(f"Mensagem ignorada, dados incompletos:\n{texto}")
-            return None
+        hora_full = datetime.combine(data.date(), hora)
+        hora_full = FUSO.localize(hora_full)
 
-        status = status_match.group(1)
-        lucro = float(lucro_match.group(1).replace(",", "."))
-        atualizado = atualizado_match.group(1)
-
-        estrategia_linha = evento_match.group(1).rsplit(" ", 1)
-        estrategia = estrategia_linha[0]
-        linha = estrategia_linha[1]
-        odd = evento_match.group(2)
-        confronto = evento_match.group(3)
-
-        tempo_str = tempo_match.group(1)
-        esporte = "🏀" if any(q in tempo_str for q in ["Q1", "Q2", "Q3", "Q4"]) else "⚽️"
-
-        dt_obj = datetime.strptime(atualizado, "%d/%m/%Y %H:%M")
-        data = dt_obj.strftime("%d/%m/%Y")
-        hora = dt_obj.strftime("%H:%M")
-        intervalo = intervalo_por_hora(hora)
+        if hora_full.hour < 12:
+            intervalo = "MADRUGADA"
+        elif hora_full.hour < 18:
+            intervalo = "TARDE"
+        else:
+            intervalo = "NOITE"
 
         return {
-            "DATA": data,
-            "HORA": hora,
+            "DATA": data.strftime("%d/%m/%Y"),
+            "HORA": hora.strftime("%H:%M"),
             "ESPORTE": esporte,
             "CONFRONTO": confronto,
             "ESTRATÉGIA": estrategia,
             "LINHA": linha,
             "ODD": odd,
-            "RESULTADO": status,
-            "SALDO": lucro,
-            "INTERVALO": intervalo
+            "RESULTADO": resultado,
+            "SALDO": saldo,
+            "INTERVALO": intervalo,
         }
+
     except Exception as e:
-        logger.error(f"Erro ao extrair dados: {e}\nMensagem:\n{texto}")
+        print(f"Erro ao extrair dados: {e}")
         return None
 
+# ========================
+# HANDLER: NOVA MENSAGEM NO CANAL
+# ========================
+async def salvar_aposta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.channel_post and update.channel_post.chat_id == CHAT_ID_CANAL:
+        mensagem = update.channel_post.text
+        data = update.channel_post.date.astimezone(FUSO)
 
-# ============ SALVAR NA BASE ============
-def salvar_dados(dados):
-    existe = os.path.exists(CAMINHO_BASE)
-    with open(CAMINHO_BASE, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=dados.keys())
-        if not existe:
-            writer.writeheader()
-        writer.writerow(dados)
+        aposta = extrair_dados(mensagem, data)
+        if aposta:
+            apostas_salvas.append(aposta)
 
-# ============ ESCUTAR MENSAGENS ============
-async def processar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.channel_post and update.channel_post.chat.id == CANAL_ID:
-        texto = update.channel_post.text
-        dados = extrair_dados(texto)
-        if dados:
-            salvar_dados(dados)
+# ========================
+# COMANDO: /gerar
+# ========================
+async def gerar_planilha(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != CHAT_ID_USUARIO:
+        return
 
-# ============ COMANDO /GERAR ============
-GERAR_DATA = range(1)
+    await update.message.reply_text("Informe a data desejada no formato DD/MM:")
 
-async def gerar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Informe a data desejada no formato DD/MM/AAAA:")
-    return GERAR_DATA
+    return 1  # Próximo estado da conversa
 
+# ========================
+# RESPOSTA: DATA PARA GERAÇÃO
+# ========================
 async def receber_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data_desejada = update.message.text.strip()
+    data_str = update.message.text.strip()
     try:
-        datetime.strptime(data_desejada, "%d/%m/%Y")
-        nome_arquivo = data_desejada.replace("/", "-") + ".csv"
-        linhas_filtradas = []
+        data_obj = datetime.strptime(data_str + "/2025", "%d/%m/%Y").date()
+        dados_dia = [a for a in apostas_salvas if datetime.strptime(a['DATA'], "%d/%m/%Y").date() == data_obj]
 
-        with open(CAMINHO_BASE, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row["DATA"] == data_desejada:
-                    linhas_filtradas.append(row)
-
-        if linhas_filtradas:
-            with open(nome_arquivo, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=linhas_filtradas[0].keys())
-                writer.writeheader()
-                writer.writerows(linhas_filtradas)
-
-            await update.message.reply_document(open(nome_arquivo, "rb"))
-            os.remove(nome_arquivo)
-        else:
+        if not dados_dia:
             await update.message.reply_text("Nenhuma aposta encontrada para essa data.")
-    except:
-        await update.message.reply_text("Data inválida. Tente novamente no formato DD/MM/AAAA.")
-    return ConversationHandler.END
+            return
 
-# ============ INICIAR BOT ============
+        df = pd.DataFrame(dados_dia)
+        nome_arquivo = f"planilha_{data_str.replace('/', '-')}.xlsx"
+        caminho = f"/tmp/{nome_arquivo}"
+        df.to_excel(caminho, index=False)
+
+        await update.message.reply_document(document=open(caminho, "rb"))
+
+    except Exception as e:
+        await update.message.reply_text(f"Erro: {e}")
+
+# ========================
+# GERA AS PLANILHAS DE 01/08 ATÉ A DATA ATUAL AO INICIAR
+# ========================
+async def gerar_planilhas_iniciais(app):
+    hoje = datetime.now(FUSO).date()
+    for dia in range(1, hoje.day + 1):
+        data = datetime.strptime(f"{dia:02d}/08/2025", "%d/%m/%Y").date()
+        dados_dia = [a for a in apostas_salvas if datetime.strptime(a['DATA'], "%d/%m/%Y").date() == data]
+        if dados_dia:
+            df = pd.DataFrame(dados_dia)
+            nome_arquivo = f"/tmp/planilha_{data.strftime('%d-%m')}.xlsx"
+            df.to_excel(nome_arquivo, index=False)
+            print(f"✅ Planilha gerada: {nome_arquivo}")
+
+# ========================
+# MAIN
+# ========================
 def main():
+    logging.basicConfig(level=logging.INFO)
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(MessageHandler(filters.ALL, processar_mensagem))
+    app.add_handler(ChannelPostHandler(salvar_aposta))
+    app.add_handler(CommandHandler("gerar", gerar_planilha))
+    app.add_handler(MessageHandler(filters.TEXT & filters.USER(user_id=CHAT_ID_USUARIO), receber_data))
 
-    conv = ConversationHandler(
-        entry_points=[CommandHandler("gerar", gerar)],
-        states={GERAR_DATA: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_data)]},
-        fallbacks=[],
-    )
-    app.add_handler(conv)
-
-    logger.info("Bot iniciado.")
-    app.run_polling()
+    app.run_polling(allowed_updates=Update.ALL_TYPES, post_init=gerar_planilhas_iniciais)
 
 if __name__ == "__main__":
     main()
