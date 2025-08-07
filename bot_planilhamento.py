@@ -132,8 +132,11 @@ def main():
     )
     app.add_handler(conv_handler)
 
-    # Inicia bot
-    app.run_polling(post_init=gerar_planilhas_iniciais)
+    # Executa a geração retroativa antes de iniciar o bot
+    asyncio.run(gerar_planilhas_iniciais(app))
+
+    # Inicia o bot
+    app.run_polling()
 
 if __name__ == '__main__':
     main()
