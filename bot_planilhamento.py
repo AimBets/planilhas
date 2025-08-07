@@ -32,7 +32,6 @@ logging.basicConfig(
 # ========== FUNÇÃO DE EXTRAÇÃO ==========
 def extrair_dados(mensagem):
     try:
-        # Só processar mensagens que contêm uma aposta (mínimo: estratégia e odd)
         if "🏆" not in mensagem or "@" not in mensagem:
             return None
 
@@ -79,9 +78,10 @@ def extrair_dados(mensagem):
         else:
             saldo = ''
 
-        atualizado_match = re.search(r'Atualizado em:\s*(\d{2}/\d{2}/\d{4})\s*(\d{2}:\d{2})', texto)
+        atualizado_match = re.search(r'Atualizado em:\s*(\d{1,2}/\d{1,2}/\d{4})\s*(\d{2}:\d{2})', texto)
         if atualizado_match:
-            data = atualizado_match.group(1)
+            d, m, a = atualizado_match.group(1).split('/')
+            data = f"{int(d):02d}/{int(m):02d}/{a}"
             hora = atualizado_match.group(2)
         else:
             now = datetime.now(TIMEZONE)
@@ -120,12 +120,13 @@ def extrair_dados(mensagem):
 
 # ========== HANDLER DE MENSAGENS ==========
 async def receber_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.channel_post:
-        mensagem = update.channel_post.text
+    if update.channel_post or update.edited_channel_post:
+        mensagem = (update.channel_post or update.edited_channel_post).text
         dados = extrair_dados(mensagem)
         if dados:
             apostas.append(dados)
             logging.info(f"Aposta registrada: {dados}")
+            logging.info(f"Total apostas armazenadas: {len(apostas)}")
 
 # ========== COMANDO /gerar ==========
 GERAR_DATA = 1
@@ -136,6 +137,16 @@ async def gerar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receber_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data_input = update.message.text.strip()
+    try:
+        d, m = data_input.split('/')
+        data_input = f"{int(d):02d}/{int(m):02d}/2025"
+    except Exception:
+        pass
+
+    logging.info(f"Filtrando apostas para a data: {data_input}")
+    for a in apostas:
+        logging.info(f"Aposta data: {a['DATA']}")
+
     filtradas = [a for a in apostas if a['DATA'] == data_input]
 
     if not filtradas:
@@ -166,7 +177,10 @@ def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     canal_handler = MessageHandler(filters.ALL & filters.Chat(CANAL_ID), receber_mensagem)
-    edit_handler = MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.Chat(CANAL_ID), receber_mensagem)
+    app.add_handler(canal_handler)
+
+    # Handler para mensagens editadas no canal (atualização de apostas)
+    edit_handler = MessageHandler(filters.UpdateType.EDITED_CHANNEL_POST & filters.Chat(CANAL_ID), receber_mensagem)
     app.add_handler(edit_handler)
 
     conv_handler = ConversationHandler(
