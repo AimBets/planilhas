@@ -128,6 +128,20 @@ async def gerar_planilhas_iniciais(app):
             nome_arquivo = f"/tmp/planilha_{data.strftime('%d-%m')}.xlsx"
             df.to_excel(nome_arquivo, index=False)
             print(f"✅ Planilha gerada: {nome_arquivo}")
+# ... outros imports e definições
+
+# DEFINIÇÃO DO HANDLER DE COMANDO /START
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🤖 Olá! Bot de planilhamento iniciado com sucesso.")
+
+# FUNÇÃO PRINCIPAL
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    # ... outros handlers
+
+    app.run_polling()
 
 # ========================
 # MAIN
