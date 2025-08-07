@@ -29,75 +29,32 @@ logging.basicConfig(
 )
 
 # ========== FUNÇÕES DE UTILIDADE ==========
-# ... (todas as importações e configurações anteriores iguais)
-
 def extrair_dados(mensagem):
     try:
-        # Só processa apostas finalizadas (com Status + Lucro + Atualizado)
-        if not all(keyword in mensagem for keyword in ["Status da Aposta", "Lucro:", "Atualizado em:"]):
-            return None
-
         linhas = mensagem.split('\n')
-        texto = mensagem
-        esporte = '🏀' if any(q in mensagem for q in ['(Q1)', '(Q2)', '(Q3)', '(Q4)']) else '⚽️'
+        esporte = '🏀' if any('(Q' in linha for linha in linhas) else '⚽️'
 
-        import re
+        confronto = next((linha.split(': ')[1] for linha in linhas if 'Confronto:' in linha), '')
+        estrategia = next((linha.split('🏆 ')[1] for linha in linhas if '🏆' in linha), '')
+        linha_info = next((linha for linha in linhas if '@' in linha), '')
+        linha = linha_info.split('@')[0].strip() if linha_info else ''
+        odd = linha_info.split('@')[1].strip() if linha_info else ''
+        resultado = 'Green' if '✅' in mensagem else 'Red' if '🔴' in mensagem else ''
+        saldo = "+100" if resultado == "Green" else "-100" if resultado == "Red" else "0"
 
-        confronto_match = re.search(r'@[\d.]+\s*-\s*(.*?)\s*-\s*🔢', texto)
-        confronto = confronto_match.group(1).strip() if confronto_match else ''
+        now = datetime.now(TIMEZONE)
+        hora = now.strftime('%H:%M')
+        data = now.strftime('%d/%m/%Y')
 
-        estrategia_match = re.search(r'🏆\s*(.*?)\s*@', texto)
-        estrategia = estrategia_match.group(1).strip() if estrategia_match else ''
-
-        linha_match = re.search(r'🏆\s*.*?(\d+\.?\d*)\s*@', texto)
-        linha = linha_match.group(1) if linha_match else ''
-
-        odd_match = re.search(r'@(\d+\.?\d*)', texto)
-        odd = odd_match.group(1) if odd_match else ''
-
-        resultado = ''
-        saldo = ''
-
-        if '✅' in texto:
-            resultado = 'Green'
-            lucro_match = re.search(r'Lucro:\s*([-\d.,]+)', texto)
-            saldo = lucro_match.group(1).replace(',', '.') if lucro_match else ''
-        elif '❌' in texto:
-            resultado = 'Red'
-            saldo = '-1'
-        elif '🟩' in texto:
-            resultado = 'Half_green'
-            lucro_match = re.search(r'Lucro:\s*([-\d.,]+)', texto)
-            saldo = lucro_match.group(1).replace(',', '.') if lucro_match else ''
-        elif '🟥' in texto:
-            resultado = 'Half_red'
-            saldo = '-0.5'
-        elif '⚪' in texto:
-            resultado = 'Void'
-            saldo = '0'
-
-        atualizado_match = re.search(r'Atualizado em:\s*(\d{2}/\d{2}/\d{4})\s*(\d{2}:\d{2})', texto)
-        if atualizado_match:
-            data = atualizado_match.group(1)
-            hora = atualizado_match.group(2)
+        hora_int = now.hour
+        if 0 <= hora_int < 6:
+            intervalo = 'MADRUGADA'
+        elif 6 <= hora_int < 12:
+            intervalo = 'MANHÃ'
+        elif 12 <= hora_int < 18:
+            intervalo = 'TARDE'
         else:
-            now = datetime.now(TIMEZONE)
-            data = now.strftime('%d/%m/%Y')
-            hora = now.strftime('%H:%M')
-
-        h = int(hora.split(':')[0])
-        if 0 <= h <= 3:
-            intervalo = '00:00 às 03:59'
-        elif 4 <= h <= 7:
-            intervalo = '04:00 às 07:59'
-        elif 8 <= h <= 11:
-            intervalo = '08:00 às 11:59'
-        elif 12 <= h <= 15:
-            intervalo = '12:00 às 15:59'
-        elif 16 <= h <= 19:
-            intervalo = '16:00 às 19:59'
-        else:
-            intervalo = '20:00 às 23:59'
+            intervalo = 'NOITE'
 
         return {
             'DATA': data,
@@ -114,7 +71,6 @@ def extrair_dados(mensagem):
     except Exception as e:
         logging.error(f"Erro ao extrair dados: {e}")
         return None
-
 
 # ========== HANDLER DE MENSAGENS DO CANAL ==========
 async def receber_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
