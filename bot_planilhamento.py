@@ -29,43 +29,23 @@ logging.basicConfig(
 )
 
 # ========== FUNÇÕES DE UTILIDADE ==========
-# Defina o fuso horário
-TIMEZONE = pytz.timezone("America/Sao_Paulo")
-
 def extrair_dados(mensagem):
     try:
         linhas = mensagem.split('\n')
+        esporte = '🏀' if any('(Q' in linha for linha in linhas) else '⚽️'
 
-        # Esporte: 🏀 se tiver (Q1)...(Q4), senão ⚽️
-        if any(q in mensagem for q in ['(Q1)', '(Q2)', '(Q3)', '(Q4)']):
-            esporte = '🏀'
-        else:
-            esporte = '⚽️'
-
-        # Confronto: extrai só nomes dos jogadores
-        confronto_linha = next((linha for linha in linhas if 'Confronto:' in linha), '')
-        confronto = confronto_linha.split(':')[1].strip() if ':' in confronto_linha else ''
-        confronto = confronto.replace('Confronto:', '').strip()
-
-        # Estratégia
-        estrategia_linha = next((linha for linha in linhas if '🏆' in linha), '')
-        estrategia = estrategia_linha.split('🏆')[1].strip() if '🏆' in estrategia_linha else ''
-
-        # Linha e odd
+        confronto = next((linha.split(': ')[1] for linha in linhas if 'Confronto:' in linha), '')
+        estrategia = next((linha.split('🏆 ')[1] for linha in linhas if '🏆' in linha), '')
         linha_info = next((linha for linha in linhas if '@' in linha), '')
-        linha = linha_info.split('@')[0].strip() if '@' in linha_info else ''
-        odd = linha_info.split('@')[1].strip() if '@' in linha_info else ''
-
-        # Resultado
+        linha = linha_info.split('@')[0].strip() if linha_info else ''
+        odd = linha_info.split('@')[1].strip() if linha_info else ''
         resultado = 'Green' if '✅' in mensagem else 'Red' if '🔴' in mensagem else ''
         saldo = "+100" if resultado == "Green" else "-100" if resultado == "Red" else "0"
 
-        # Data e hora
         now = datetime.now(TIMEZONE)
         hora = now.strftime('%H:%M')
         data = now.strftime('%d/%m/%Y')
 
-        # Intervalo
         hora_int = now.hour
         if 0 <= hora_int < 6:
             intervalo = 'MADRUGADA'
@@ -88,7 +68,6 @@ def extrair_dados(mensagem):
             'SALDO': saldo,
             'INTERVALO': intervalo
         }
-
     except Exception as e:
         logging.error(f"Erro ao extrair dados: {e}")
         return None
