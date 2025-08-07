@@ -133,14 +133,19 @@ async def gerar_planilhas_iniciais(app):
 # MAIN
 # ========================
 def main():
-    logging.basicConfig(level=logging.INFO)
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST, salvar_aposta))
-    app.add_handler(CommandHandler("gerar", gerar_planilha))
-    app.add_handler(MessageHandler(filters.TEXT & filters.User(user_id=CHAT_ID_USUARIO), receber_data))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("gerar", gerar_planilha_handler))
+    app.add_handler(MessageHandler(filters.ALL, salvar_aposta))
 
-    app.run_polling(allowed_updates=Update.ALL_TYPES, post_init=gerar_planilhas_iniciais)
+    # Executa a função antes de iniciar o polling
+    asyncio.run(gerar_planilhas_iniciais())
+
+    # Inicia o bot
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
+
+
