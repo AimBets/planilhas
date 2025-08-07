@@ -138,7 +138,7 @@ def main():
 
     app.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST, salvar_aposta))
     app.add_handler(CommandHandler("gerar", gerar_planilha))
-    app.add_handler(MessageHandler(filters.TEXT & filters.USER(user_id=CHAT_ID_USUARIO), receber_data))
+    app.add_handler(MessageHandler(filters.TEXT & filters.User(user_id=CHAT_ID_USUARIO), receber_data))
 
     app.run_polling(allowed_updates=Update.ALL_TYPES, post_init=gerar_planilhas_iniciais)
 
