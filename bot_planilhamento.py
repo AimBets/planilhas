@@ -32,9 +32,8 @@ logging.basicConfig(
 # ========== FUNÇÃO DE EXTRAÇÃO ==========
 def extrair_dados(mensagem):
     try:
-        # Só processar mensagens que contêm uma aposta (ex: que têm o símbolo 🏆 e @odd)
-if "🏆" not in mensagem or "@" not in mensagem:
-    return None
+        # Só processar mensagens que contêm uma aposta (mínimo: estratégia e odd)
+        if "🏆" not in mensagem or "@" not in mensagem:
 
 
         texto = mensagem
