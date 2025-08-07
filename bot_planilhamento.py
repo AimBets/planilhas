@@ -51,7 +51,6 @@ def extrair_dados(mensagem):
         odd_match = re.search(r'@(\d+\.?\d*)', texto)
         odd = odd_match.group(1) if odd_match else ''
 
-        # Resultado simbólico
         if '✅' in texto:
             resultado = 'Green'
         elif '❌' in texto:
@@ -65,7 +64,6 @@ def extrair_dados(mensagem):
         else:
             resultado = ''
 
-        # Saldo (com base no resultado)
         if resultado == 'Green' or resultado == 'Half_green':
             lucro_match = re.search(r'Lucro:\s*([-\d.,]+)', texto)
             saldo = lucro_match.group(1).replace(',', '.') if lucro_match else ''
@@ -78,10 +76,9 @@ def extrair_dados(mensagem):
         else:
             saldo = ''
 
-        atualizado_match = re.search(r'Atualizado em:\s*(\d{1,2}/\d{1,2}/\d{4})\s*(\d{2}:\d{2})', texto)
+        atualizado_match = re.search(r'Atualizado em:\s*(\d{2}/\d{2}/\d{4})\s*(\d{2}:\d{2})', texto)
         if atualizado_match:
-            d, m, a = atualizado_match.group(1).split('/')
-            data = f"{int(d):02d}/{int(m):02d}/{a}"
+            data = atualizado_match.group(1)
             hora = atualizado_match.group(2)
         else:
             now = datetime.now(TIMEZONE)
@@ -120,12 +117,23 @@ def extrair_dados(mensagem):
 
 # ========== HANDLER DE MENSAGENS ==========
 async def receber_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.channel_post or update.edited_channel_post:
-        mensagem = (update.channel_post or update.edited_channel_post).text
+    if update.channel_post:
+        mensagem = update.channel_post.text
         dados = extrair_dados(mensagem)
         if dados:
-            apostas.append(dados)
-            logging.info(f"Aposta registrada: {dados}")
+            # Verifica se já existe aposta com mesmo confronto e hora
+            encontrada = False
+            for i, aposta in enumerate(apostas):
+                if aposta['CONFRONTO'] == dados['CONFRONTO'] and aposta['HORA'] == dados['HORA']:
+                    apostas[i] = dados  # atualiza
+                    encontrada = True
+                    logging.info(f"Aposta atualizada: {dados}")
+                    break
+
+            if not encontrada:
+                apostas.append(dados)
+                logging.info(f"Aposta nova registrada: {dados}")
+
             logging.info(f"Total apostas armazenadas: {len(apostas)}")
 
 # ========== COMANDO /gerar ==========
@@ -137,16 +145,6 @@ async def gerar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receber_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data_input = update.message.text.strip()
-    try:
-        d, m = data_input.split('/')
-        data_input = f"{int(d):02d}/{int(m):02d}/2025"
-    except Exception:
-        pass
-
-    logging.info(f"Filtrando apostas para a data: {data_input}")
-    for a in apostas:
-        logging.info(f"Aposta data: {a['DATA']}")
-
     filtradas = [a for a in apostas if a['DATA'] == data_input]
 
     if not filtradas:
@@ -178,10 +176,6 @@ def main():
 
     canal_handler = MessageHandler(filters.ALL & filters.Chat(CANAL_ID), receber_mensagem)
     app.add_handler(canal_handler)
-
-    # Handler para mensagens editadas no canal (atualização de apostas)
-    edit_handler = MessageHandler(filters.UpdateType.EDITED_CHANNEL_POST & filters.Chat(CANAL_ID), receber_mensagem)
-    app.add_handler(edit_handler)
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("gerar", gerar)],
