@@ -2,6 +2,7 @@ import logging
 import os
 import pytz
 import asyncio
+import sys
 from datetime import datetime
 from telegram import Update
 from telegram.ext import (
@@ -139,5 +140,16 @@ async def main_async():
     # Start do bot
     await app.run_polling()
 
+
 if __name__ == '__main__':
-    asyncio.run(main_async())
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # Se já tiver um loop rodando (ex: Jupyter), crie uma task
+        asyncio.create_task(main_async())
+    else:
+        # Se não tiver loop rodando, rode normalmente
+        asyncio.run(main_async())
