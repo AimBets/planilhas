@@ -30,7 +30,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# ========== FUNÇÃO DE EXTRAÇÃO (sem alterações) ==========
+# ========== FUNÇÃO DE EXTRAÇÃO ==========
 def extrair_dados(mensagem):
     try:
         if "🏆" not in mensagem or "@" not in mensagem:
@@ -116,34 +116,28 @@ def extrair_dados(mensagem):
         logging.error(f"Erro ao extrair dados: {e}")
         return None
 
-# ========== HANDLER DO CANAL ANTIGO PARA REPASSAR SÓ AS MENSAGENS ATUALIZADAS ==========
+# ========== REPASSAR SE MENSAGEM ATUALIZADA ==========
 async def receber_e_repassar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    texto = update.edited_channel_post.text or ''
-    # Só repassa se tiver "Status da Aposta:" (aposta atualizada)
+    texto = update.channel_post.text if update.channel_post else ''
     if "Status da Aposta:" in texto:
         await context.bot.send_message(chat_id=CANAL_NOVO_ID, text=texto)
         logging.info("Mensagem atualizada repassada para canal novo.")
 
-# ========== HANDLER DO CANAL NOVO PARA ARMAZENAR APÓS REPASSE ==========
+# ========== ARMAZENAR DO NOVO CANAL ==========
 async def receber_para_planilhar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.channel_post:
-        mensagem = update.channel_post.text
-        dados = extrair_dados(mensagem)
-        if dados:
-            encontrada = False
-            for i, aposta in enumerate(apostas):
-                if aposta['CONFRONTO'] == dados['CONFRONTO'] and aposta['HORA'] == dados['HORA']:
-                    apostas[i] = dados  # atualiza
-                    encontrada = True
-                    logging.info(f"Aposta atualizada: {dados}")
-                    break
-            if not encontrada:
-                apostas.append(dados)
-                logging.info(f"Aposta nova registrada: {dados}")
+    mensagem = update.channel_post.text if update.channel_post else ''
+    dados = extrair_dados(mensagem)
+    if dados:
+        for i, aposta in enumerate(apostas):
+            if aposta['CONFRONTO'] == dados['CONFRONTO'] and aposta['HORA'] == dados['HORA']:
+                apostas[i] = dados
+                logging.info(f"Aposta atualizada: {dados}")
+                break
+        else:
+            apostas.append(dados)
+            logging.info(f"Aposta nova registrada: {dados}")
 
-            logging.info(f"Total apostas armazenadas: {len(apostas)}")
-
-# ========== COMANDO /gerar (SEM ALTERAÇÕES) ==========
+# ========== /GERAR ==========
 GERAR_DATA = 1
 
 async def gerar(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -166,7 +160,7 @@ async def receber_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     os.remove(nome_arquivo)
     return ConversationHandler.END
 
-# ========== GERAÇÃO RETROATIVA (SEM ALTERAÇÕES) ==========
+# ========== RETROATIVO ==========
 async def gerar_planilhas_iniciais(app):
     dias = [f"{str(d).zfill(2)}/08/2025" for d in range(1, 8)]
     for data in dias:
@@ -177,17 +171,18 @@ async def gerar_planilhas_iniciais(app):
             df.to_excel(nome_arquivo, index=False)
             logging.info(f"Planilha gerada retroativamente: {nome_arquivo}")
 
-# ========== MAIN COM HANDLERS SEPARADOS ==========
+# ========== MAIN ==========
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Alteração aqui: handler para mensagens editadas (EDITED_CHANNEL_POST) no canal antigo
-    app.add_handler(MessageHandler(filters.EDITED_CHANNEL_POST & filters.Chat(CANAL_ANTIGO_ID), receber_e_repassar))
+    # RECEBER NOVAS EDIÇÕES COM STATUS
+    app.add_handler(MessageHandler(filters.Chat(CANAL_ANTIGO_ID), receber_e_repassar))
+    app.add_handler(MessageHandler(filters.UpdateType.EDITED_CHANNEL_POST & filters.Chat(CANAL_ANTIGO_ID), receber_e_repassar))
 
-    # Handler para armazenar mensagens no canal novo
-    app.add_handler(MessageHandler(filters.ALL & filters.Chat(CANAL_NOVO_ID), receber_para_planilhar))
+    # ARMAZENAR DO NOVO CANAL
+    app.add_handler(MessageHandler(filters.Chat(CANAL_NOVO_ID), receber_para_planilhar))
 
-    # Conversa comando /gerar
+    # COMANDO /gerar
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("gerar", gerar)],
         states={GERAR_DATA: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_data)]},
@@ -195,7 +190,6 @@ def main():
     )
     app.add_handler(conv_handler)
 
-    # Geração retroativa após iniciar
     async def post_init(app):
         await gerar_planilhas_iniciais(app)
     app.post_init = post_init
