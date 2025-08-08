@@ -13,10 +13,12 @@ from telegram.ext import (
 )
 import pandas as pd
 import re
+import asyncio
 
 # =================== CONFIGURAÇÕES ===================
 TOKEN = "8399571746:AAFXxkkJOfOP8cWozYKUnitQTDPTmLpWky8"
-CANAL_ID = -1002780267394
+CANAL_ANTIGO_ID = -1002780267394  # Canal onde chegam as mensagens iniciais
+CANAL_NOVO_ID = -1002767873025    # Canal onde o bot vai planilhar e receber mensagens repassadas
 USUARIO_ID = 1454008370
 TIMEZONE = pytz.timezone('America/Sao_Paulo')
 
@@ -115,21 +117,28 @@ def extrair_dados(mensagem):
         logging.error(f"Erro ao extrair dados: {e}")
         return None
 
-# ========== HANDLER DE MENSAGENS ==========
-async def receber_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ========== HANDLER PARA RECEBER E REPASSAR MENSAGENS DO CANAL ANTIGO ==========
+async def receber_e_repassar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.channel_post:
+        texto = update.channel_post.text_html or update.channel_post.text or ''
+        # Se mensagem tiver "Status da Aposta:", repassa para o canal novo
+        if "Status da Aposta:" in texto:
+            await context.bot.send_message(chat_id=CANAL_NOVO_ID, text=texto)
+            logging.info("Mensagem repassada para canal novo.")
+
+# ========== HANDLER PARA RECEBER MENSAGENS DO CANAL NOVO PARA PLANILHAR ==========
+async def receber_para_planilhar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.channel_post:
         mensagem = update.channel_post.text
         dados = extrair_dados(mensagem)
         if dados:
-            # Verifica se já existe aposta com mesmo confronto e hora
             encontrada = False
             for i, aposta in enumerate(apostas):
                 if aposta['CONFRONTO'] == dados['CONFRONTO'] and aposta['HORA'] == dados['HORA']:
-                    apostas[i] = dados  # atualiza
-                    encontrada = True
+                    apostas[i] = dados
                     logging.info(f"Aposta atualizada: {dados}")
+                    encontrada = True
                     break
-
             if not encontrada:
                 apostas.append(dados)
                 logging.info(f"Aposta nova registrada: {dados}")
@@ -140,7 +149,7 @@ async def receber_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
 GERAR_DATA = 1
 
 async def gerar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Informe a data desejada no formato DD/MM:")
+    await update.message.reply_text("Informe a data desejada no formato DD/MM/YYYY:")
     return GERAR_DATA
 
 async def receber_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -153,9 +162,11 @@ async def receber_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     df = pd.DataFrame(filtradas)
     nome_arquivo = f"apostas_{data_input.replace('/', '-')}.xlsx"
-    df.to_excel(nome_arquivo, index=False)
+    with open(nome_arquivo, 'wb') as f:
+        df.to_excel(f, index=False)
 
-    await update.message.reply_document(document=open(nome_arquivo, 'rb'))
+    with open(nome_arquivo, 'rb') as doc:
+        await update.message.reply_document(document=doc)
     os.remove(nome_arquivo)
     return ConversationHandler.END
 
@@ -170,12 +181,17 @@ async def gerar_planilhas_iniciais(app):
             df.to_excel(nome_arquivo, index=False)
             logging.info(f"Planilha gerada retroativamente: {nome_arquivo}")
 
-# ========== FUNÇÃO MAIN ==========
+# ========== MAIN ==========
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    canal_handler = MessageHandler(filters.ALL & filters.Chat(CANAL_ID), receber_mensagem)
-    app.add_handler(canal_handler)
+    # Handler para repassar do canal antigo
+    handler_repassar = MessageHandler(filters.ALL & filters.Chat(CANAL_ANTIGO_ID), receber_e_repassar)
+    app.add_handler(handler_repassar)
+
+    # Handler para planilhar do canal novo
+    handler_planilhar = MessageHandler(filters.ALL & filters.Chat(CANAL_NOVO_ID), receber_para_planilhar)
+    app.add_handler(handler_planilhar)
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("gerar", gerar)],
@@ -184,10 +200,12 @@ def main():
     )
     app.add_handler(conv_handler)
 
-    async def post_init(app):
+    async def startup():
+        logging.info("Gerando planilhas retroativas ao iniciar...")
         await gerar_planilhas_iniciais(app)
 
-    app.post_init = post_init
+    asyncio.create_task(startup())
+
     app.run_polling()
 
 if __name__ == '__main__':
