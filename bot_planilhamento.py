@@ -7,7 +7,6 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
-    EditedChannelPostHandler,  # NOVO: handler para mensagens editadas em canais
     filters,
     ContextTypes,
     ConversationHandler
@@ -31,7 +30,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# ========== FUNÇÃO DE EXTRAÇÃO (SEM ALTERAÇÕES) ==========
+# ========== FUNÇÃO DE EXTRAÇÃO (sem alterações) ==========
 def extrair_dados(mensagem):
     try:
         if "🏆" not in mensagem or "@" not in mensagem:
@@ -117,14 +116,15 @@ def extrair_dados(mensagem):
         logging.error(f"Erro ao extrair dados: {e}")
         return None
 
-# ========== HANDLER PARA MENSAGENS EDITADAS NO CANAL ANTIGO (REPASSE) ==========
+# ========== HANDLER DO CANAL ANTIGO PARA REPASSAR SÓ AS MENSAGENS ATUALIZADAS ==========
 async def receber_e_repassar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.edited_channel_post.text or ''
+    # Só repassa se tiver "Status da Aposta:" (aposta atualizada)
     if "Status da Aposta:" in texto:
         await context.bot.send_message(chat_id=CANAL_NOVO_ID, text=texto)
         logging.info("Mensagem atualizada repassada para canal novo.")
 
-# ========== HANDLER PARA ARMAZENAR MENSAGENS DO CANAL NOVO ==========
+# ========== HANDLER DO CANAL NOVO PARA ARMAZENAR APÓS REPASSE ==========
 async def receber_para_planilhar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.channel_post:
         mensagem = update.channel_post.text
@@ -177,17 +177,17 @@ async def gerar_planilhas_iniciais(app):
             df.to_excel(nome_arquivo, index=False)
             logging.info(f"Planilha gerada retroativamente: {nome_arquivo}")
 
-# ========== MAIN (COM APENAS OS HANDLERS NECESSÁRIOS ALTERADOS) ==========
+# ========== MAIN COM HANDLERS SEPARADOS ==========
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Handler para repassar mensagens editadas do canal antigo (APOSTAS ATUALIZADAS)
-    app.add_handler(EditedChannelPostHandler(receber_e_repassar, filters.Chat(CANAL_ANTIGO_ID)))
+    # Alteração aqui: handler para mensagens editadas (EDITED_CHANNEL_POST) no canal antigo
+    app.add_handler(MessageHandler(filters.EDITED_CHANNEL_POST & filters.Chat(CANAL_ANTIGO_ID), receber_e_repassar))
 
-    # Handler para armazenar mensagens no canal novo (onde as apostas repassadas chegam)
+    # Handler para armazenar mensagens no canal novo
     app.add_handler(MessageHandler(filters.ALL & filters.Chat(CANAL_NOVO_ID), receber_para_planilhar))
 
-    # Handler do comando /gerar (igual ao seu original)
+    # Conversa comando /gerar
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("gerar", gerar)],
         states={GERAR_DATA: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_data)]},
