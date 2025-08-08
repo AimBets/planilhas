@@ -17,8 +17,8 @@ import asyncio
 
 # =================== CONFIGURAÇÕES ===================
 TOKEN = "8399571746:AAFXxkkJOfOP8cWozYKUnitQTDPTmLpWky8"
-CANAL_ANTIGO_ID = -1002780267394  # Canal onde chegam as mensagens iniciais
-CANAL_NOVO_ID = -1002767873025    # Canal onde o bot vai planilhar e receber mensagens repassadas
+CANAL_ANTIGO_ID = -1002780267394  # Canal antigo: só para repassar mensagens
+CANAL_NOVO_ID = -1002767873025    # Canal novo: só para planilhar
 USUARIO_ID = 1454008370
 TIMEZONE = pytz.timezone('America/Sao_Paulo')
 
@@ -121,7 +121,6 @@ def extrair_dados(mensagem):
 async def receber_e_repassar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.channel_post:
         texto = update.channel_post.text_html or update.channel_post.text or ''
-        # Se mensagem tiver "Status da Aposta:", repassa para o canal novo
         if "Status da Aposta:" in texto:
             await context.bot.send_message(chat_id=CANAL_NOVO_ID, text=texto)
             logging.info("Mensagem repassada para canal novo.")
@@ -185,13 +184,11 @@ async def gerar_planilhas_iniciais(app):
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Handler para repassar do canal antigo
-    handler_repassar = MessageHandler(filters.ALL & filters.Chat(CANAL_ANTIGO_ID), receber_e_repassar)
-    app.add_handler(handler_repassar)
+    # Handler que escuta o canal antigo e repassa as mensagens atualizadas para o canal novo
+    app.add_handler(MessageHandler(filters.ALL & filters.Chat(CANAL_ANTIGO_ID), receber_e_repassar))
 
-    # Handler para planilhar do canal novo
-    handler_planilhar = MessageHandler(filters.ALL & filters.Chat(CANAL_NOVO_ID), receber_para_planilhar)
-    app.add_handler(handler_planilhar)
+    # Handler que escuta o canal novo para planilhar apostas
+    app.add_handler(MessageHandler(filters.ALL & filters.Chat(CANAL_NOVO_ID), receber_para_planilhar))
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("gerar", gerar)],
@@ -200,11 +197,8 @@ def main():
     )
     app.add_handler(conv_handler)
 
-    async def startup():
-        logging.info("Gerando planilhas retroativas ao iniciar...")
-        await gerar_planilhas_iniciais(app)
-
-    asyncio.create_task(startup())
+    # Geração retroativa ao iniciar
+    asyncio.create_task(gerar_planilhas_iniciais(app))
 
     app.run_polling()
 
