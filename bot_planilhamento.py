@@ -13,12 +13,11 @@ from telegram.ext import (
 )
 import pandas as pd
 import re
-import asyncio
 
 # =================== CONFIGURAÇÕES ===================
 TOKEN = "8399571746:AAFXxkkJOfOP8cWozYKUnitQTDPTmLpWky8"
-CANAL_ANTIGO_ID = -1002780267394  # Canal antigo: só para repassar mensagens
-CANAL_NOVO_ID = -1002767873025    # Canal novo: só para planilhar
+CANAL_ANTIGO_ID = -1002780267394  # seu canal antigo
+CANAL_NOVO_ID = -1002767873025    # novo canal, onde repassa e planilha
 USUARIO_ID = 1454008370
 TIMEZONE = pytz.timezone('America/Sao_Paulo')
 
@@ -31,7 +30,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# ========== FUNÇÃO DE EXTRAÇÃO ==========
+# ========== FUNÇÃO DE EXTRAÇÃO (sem alterações) ==========
 def extrair_dados(mensagem):
     try:
         if "🏆" not in mensagem or "@" not in mensagem:
@@ -117,15 +116,16 @@ def extrair_dados(mensagem):
         logging.error(f"Erro ao extrair dados: {e}")
         return None
 
-# ========== HANDLER PARA RECEBER E REPASSAR MENSAGENS DO CANAL ANTIGO ==========
+# ========== HANDLER DO CANAL ANTIGO PARA REPASSAR SÓ AS MENSAGENS ATUALIZADAS ==========
 async def receber_e_repassar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.channel_post:
-        texto = update.channel_post.text_html or update.channel_post.text or ''
+        texto = update.channel_post.text or ''
+        # Só repassa se tiver "Status da Aposta:" (aposta atualizada)
         if "Status da Aposta:" in texto:
             await context.bot.send_message(chat_id=CANAL_NOVO_ID, text=texto)
-            logging.info("Mensagem repassada para canal novo.")
+            logging.info("Mensagem atualizada repassada para canal novo.")
 
-# ========== HANDLER PARA RECEBER MENSAGENS DO CANAL NOVO PARA PLANILHAR ==========
+# ========== HANDLER DO CANAL NOVO PARA ARMAZENAR APÓS REPASSE ==========
 async def receber_para_planilhar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.channel_post:
         mensagem = update.channel_post.text
@@ -134,9 +134,9 @@ async def receber_para_planilhar(update: Update, context: ContextTypes.DEFAULT_T
             encontrada = False
             for i, aposta in enumerate(apostas):
                 if aposta['CONFRONTO'] == dados['CONFRONTO'] and aposta['HORA'] == dados['HORA']:
-                    apostas[i] = dados
-                    logging.info(f"Aposta atualizada: {dados}")
+                    apostas[i] = dados  # atualiza
                     encontrada = True
+                    logging.info(f"Aposta atualizada: {dados}")
                     break
             if not encontrada:
                 apostas.append(dados)
@@ -144,11 +144,11 @@ async def receber_para_planilhar(update: Update, context: ContextTypes.DEFAULT_T
 
             logging.info(f"Total apostas armazenadas: {len(apostas)}")
 
-# ========== COMANDO /gerar ==========
+# ========== COMANDO /gerar (SEM ALTERAÇÕES) ==========
 GERAR_DATA = 1
 
 async def gerar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Informe a data desejada no formato DD/MM/YYYY:")
+    await update.message.reply_text("Informe a data desejada no formato DD/MM:")
     return GERAR_DATA
 
 async def receber_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -161,15 +161,13 @@ async def receber_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     df = pd.DataFrame(filtradas)
     nome_arquivo = f"apostas_{data_input.replace('/', '-')}.xlsx"
-    with open(nome_arquivo, 'wb') as f:
-        df.to_excel(f, index=False)
+    df.to_excel(nome_arquivo, index=False)
 
-    with open(nome_arquivo, 'rb') as doc:
-        await update.message.reply_document(document=doc)
+    await update.message.reply_document(document=open(nome_arquivo, 'rb'))
     os.remove(nome_arquivo)
     return ConversationHandler.END
 
-# ========== GERAÇÃO RETROATIVA ==========
+# ========== GERAÇÃO RETROATIVA (SEM ALTERAÇÕES) ==========
 async def gerar_planilhas_iniciais(app):
     dias = [f"{str(d).zfill(2)}/08/2025" for d in range(1, 8)]
     for data in dias:
@@ -180,16 +178,17 @@ async def gerar_planilhas_iniciais(app):
             df.to_excel(nome_arquivo, index=False)
             logging.info(f"Planilha gerada retroativamente: {nome_arquivo}")
 
-# ========== MAIN ==========
+# ========== MAIN COM HANDLERS SEPARADOS ==========
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Handler que escuta o canal antigo e repassa as mensagens atualizadas para o canal novo
+    # Handler para repassar do canal antigo as mensagens atualizadas
     app.add_handler(MessageHandler(filters.ALL & filters.Chat(CANAL_ANTIGO_ID), receber_e_repassar))
 
-    # Handler que escuta o canal novo para planilhar apostas
+    # Handler para armazenar apostas do canal novo
     app.add_handler(MessageHandler(filters.ALL & filters.Chat(CANAL_NOVO_ID), receber_para_planilhar))
 
+    # Conversa comando /gerar
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("gerar", gerar)],
         states={GERAR_DATA: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_data)]},
@@ -197,8 +196,10 @@ def main():
     )
     app.add_handler(conv_handler)
 
-    # Geração retroativa ao iniciar
-    asyncio.create_task(gerar_planilhas_iniciais(app))
+    # Geração retroativa após iniciar
+    async def post_init(app):
+        await gerar_planilhas_iniciais(app)
+    app.post_init = post_init
 
     app.run_polling()
 
